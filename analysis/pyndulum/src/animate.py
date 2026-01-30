@@ -3,6 +3,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 import numpy as np
+from pint import Quantity
 
 from src import ureg
 from src.primitives import RectPrim, LinePrim, Process, State
@@ -55,8 +56,11 @@ class AnimText(AnimObject):
         self.text.set_text("")
         return self.text
     
-    def update(self, state: State, time: float) -> plt.Text:
-        text_vars = {**vars(state), "time": time}
+    def update(self, state: State, time: Quantity) -> plt.Text:
+        # Convert state values to display units
+        display_state = state.to_display_units()
+
+        text_vars = {**display_state, "time": time}
         content = self.fmt.format(**text_vars)
         self.text.set_text(content)
         return self.text

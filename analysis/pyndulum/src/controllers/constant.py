@@ -10,4 +10,4 @@ class ConstantController(AbstractController):
         
 
     def compute_u(self, system: System, state: State) -> float:
-        return self.u.magnitude
+        return self.u

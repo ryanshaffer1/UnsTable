@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from pint import Quantity
+from src import ureg
 
 @dataclass
 class State:
@@ -17,6 +18,14 @@ class State:
                          self.vx.to_base_units().magnitude,
                          self.theta.to_base_units().magnitude,
                          self.omega.to_base_units().magnitude])
+        
+    def to_display_units(self) -> dict[str, Quantity]:
+        return {
+            "x": self.x.to(ureg.meter),
+            "vx": self.vx.to(ureg.meter / ureg.second),
+            "theta": self.theta.to(ureg.degree),
+            "omega": self.omega.to(ureg.degree / ureg.second)
+        }
 
 class Process(ABC):
     state: State
