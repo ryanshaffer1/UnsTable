@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 from pint import Quantity
 
-from src import ureg
 from src.primitives import State
 from src.system import System
 
@@ -54,7 +53,7 @@ class LinearizedModel(AbstractDynamicsModel):
             b2,
             0,
             b4
-            ])
+            ]).reshape(-1,1)
 
         return A, B
 
@@ -64,13 +63,7 @@ class LinearizedModel(AbstractDynamicsModel):
 
         # Compute state derivative
         state_deriv = A @ state.to_vector() + B * u.magnitude
-        x_dot = state_deriv[0] * ureg.meter / ureg.second
-        x_ddot = state_deriv[1] * ureg.meter / ureg.second**2
-        theta_dot = state_deriv[2] * ureg.radian / ureg.second
-        theta_ddot = state_deriv[3] * ureg.radian / ureg.second**2
-
-        # Return state derivative
-        return self.state_derivative_to_vector(x_dot, x_ddot, theta_dot, theta_ddot)
+        return state_deriv
 
 
 class NonlinearModel(AbstractDynamicsModel):

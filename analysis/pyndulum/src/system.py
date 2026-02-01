@@ -26,7 +26,7 @@ class Cart(RectPrim):
 
 @dataclass
 class Pendulum(LinePrim):
-    mass: Quantity = 0.5 * ureg.kg
+    mass: Quantity = 2 * ureg.kg
     length: Quantity = 24 * ureg["inch"]
     y_pivot: Quantity = 0 * ureg["inch"]
     thickness: Quantity = 3 * ureg["inch"]
@@ -73,3 +73,15 @@ class System:
         self.m_cart = self.cart.mass
         self.m_pend = self.pendulum.mass
         self.l_com = self.pendulum.length_pivot_to_centroid
+
+
+    def trace_pend_endpoint_history(self, state_history: np.ndarray) -> np.ndarray:
+        # Allocate array for output
+        endpoint_history = np.zeros([4, state_history.shape[1]])
+        # Iterate through states in state history
+        for i, row in enumerate(state_history.T):
+            # Calculate and store the tip position
+            base_pos, tip_pos = self.pendulum.get_endpoints(State.from_vector(row))
+            endpoint_history[0:2, i] = Quantity.from_sequence(base_pos).to_base_units().magnitude
+            endpoint_history[2:4, i] = Quantity.from_sequence(tip_pos).to_base_units().magnitude
+        return endpoint_history

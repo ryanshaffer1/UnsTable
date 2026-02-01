@@ -8,7 +8,7 @@ from src import ureg
 from src.animate import SimAnimator
 from src.primitives import State
 from src.system import Cart, Pendulum, System
-from src.controllers import AbstractController, ConstantController
+from src.controllers import AbstractController, ConstantController, LQRController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
 
@@ -63,10 +63,17 @@ def main():
                        vx = 0 * ureg.meter/ureg.second, 
                        theta = 0 * ureg.degree, 
                        omega = .5 * ureg.radian/ureg.second)
-    system = System(Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter), 
-                    Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
-                    gravity=10*ureg.meter/ureg.second**2)
-    controller = ConstantController(0 * ureg.newton)
+    # system = System(Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter), 
+    #                 Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
+    #                 gravity=10*ureg.meter/ureg.second**2)
+    system = System(Cart(), Pendulum())
+    # controller = ConstantController(0 * ureg.newton)
+    controller = LQRController(
+        Q=np.array([[1,0,0,0],[0,1,0,0],[0,0,10,0],[0,0,0,50]]),
+        R=0.01,
+        system=system,
+        setpoint=[0,0,0,0],
+        limit=10*ureg.newton)
     sim = Simulation(system, controller, init_state)
     
     # Output flags

@@ -10,6 +10,7 @@ from src import ureg
 from src.primitives import RectPrim, LinePrim, State
 from src.system import System
 
+
 class AnimObject(ABC):
     @abstractmethod
     def initialize(self) -> plt.Artist:
@@ -109,11 +110,13 @@ class SimAnimator:
 
     def format_plot(self):
         # Calculate plot limits to keep cart/pendulum in view
-        xlims = (np.min(self.state_history[0,:]), np.max(self.state_history[0,:]))*ureg.meter
-        pend_length = self.sys.pendulum.length
+        endpoint_history = self.sys.trace_pend_endpoint_history(self.state_history)
+        xlims = (np.min(endpoint_history[[0,2],:]), np.max(endpoint_history[[0,2],:]))*ureg.meter
+        ylims = (np.min(endpoint_history[[1,3],:]), np.max(endpoint_history[[1,3],:]))*ureg.meter
+        # Add margin and make sure origin is in view
         margin = 0.5 * ureg.meter
-        xlims = [xlims[0] - pend_length - margin, xlims[1] + pend_length + margin]
-        ylims = [-pend_length - margin, pend_length + margin]
+        xlims = [min(0, xlims[0]) - margin, max(0, xlims[1]) + margin]
+        ylims = [min(0, ylims[0]) - margin, max(0, ylims[1]) + margin]
         
         # Format plot
         self.ax.xaxis.set_units(ureg.meter)
