@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Self
 
 import numpy as np
 
@@ -18,6 +19,13 @@ class State:
                          self.vx.to_base_units().magnitude,
                          self.theta.to_base_units().magnitude,
                          self.omega.to_base_units().magnitude])
+
+    @classmethod
+    def from_vector(cls, vector: list[float]) -> Self:
+        return cls(x = vector[0] * ureg.meter,
+                   vx = vector[1] * ureg.meter / ureg.second,
+                   theta = vector[2] * ureg.radian,
+                   omega = vector[3] * ureg.radian / ureg.second)
         
     def to_display_units(self) -> dict[str, Quantity]:
         return {
@@ -26,16 +34,6 @@ class State:
             "theta": self.theta.to(ureg.degree),
             "omega": self.omega.to(ureg.degree / ureg.second)
         }
-
-class Process(ABC):
-    state: State
-
-    @abstractmethod
-    def update(self, time: float) -> None:
-        pass
-
-    def get_state(self) -> State:
-        return self.state
 
 class RectPrim(ABC):
     width: Quantity
