@@ -9,8 +9,11 @@ from src.sim_components import System
 
 class AbstractDynamicsModel(ABC):
     @abstractmethod
-    def update_state(self, system: System, state: State, u: Quantity, delta_time: Quantity) -> State:
+    def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         pass
+    
+    def state_derivative_to_vector(self, x_dot: Quantity, x_ddot: Quantity, theta_dot: Quantity, theta_ddot: Quantity) -> np.ndarray:
+        return np.array([x_dot.magnitude, x_ddot.magnitude, theta_dot.magnitude, theta_ddot.magnitude])
 
 
 class LinearizedModel(AbstractDynamicsModel):
@@ -55,7 +58,7 @@ class LinearizedModel(AbstractDynamicsModel):
 
         return A, B
 
-    def update_state(self, system: System, state: State, u: Quantity, delta_time: Quantity) -> State:
+    def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         # Construct A and B matrices from plant
         A, B = self.get_A_B(system)
 
@@ -66,23 +69,16 @@ class LinearizedModel(AbstractDynamicsModel):
         theta_dot = state_deriv[2] * ureg.radian / ureg.second
         theta_ddot = state_deriv[3] * ureg.radian / ureg.second**2
 
-        # Euler integration to get new state
-        new_state = State(
-            x = state.x + x_dot * delta_time,
-            vx = state.vx + x_ddot * delta_time,
-            theta = state.theta + theta_dot * delta_time,
-            omega = state.omega + theta_ddot * delta_time
-        )
-        return new_state
+        # Return state derivative
+        return self.state_derivative_to_vector(x_dot, x_ddot, theta_dot, theta_ddot)
 
 
 class NonlinearModel(AbstractDynamicsModel):
     def __init__(self) -> None:
         pass
     
-    def update_state(self, system: System, state: State, u: Quantity, delta_time: Quantity) -> State:
+    def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         # Unpack variables
-        x = state.x.to_base_units()
         vx = state.vx.to_base_units()
         theta = state.theta.to_base_units()
         omega = state.omega.to_base_units()
@@ -100,15 +96,9 @@ class NonlinearModel(AbstractDynamicsModel):
         x_ddot = x_ddot_coeff * (b*vx - m_pend*l_com*omega**2 * np.sin(theta) + (m_pend**2 * l_com**2 * g * np.sin(theta) * np.cos(theta)) / (moi + m_pend*l_com**2) - u)
         theta_dot = omega
         theta_ddot = theta_ddot_coeff * (-b*vx + m_pend*l_com*omega**2 * np.sin(theta) - (m_cart + m_pend) * g * np.tan(theta) + u)
-        
-        # Euler integration to get new state
-        new_state = State(
-            x = x + x_dot * delta_time,
-            vx = vx + x_ddot * delta_time,
-            theta = theta + theta_dot * delta_time,
-            omega = omega + theta_ddot * delta_time
-        )
-        return new_state
+
+        # Return state derivative
+        return self.state_derivative_to_vector(x_dot, x_ddot, theta_dot, theta_ddot)
 
 class BasicDynamics:
     def __init__(self) -> None:

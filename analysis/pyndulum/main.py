@@ -10,6 +10,7 @@ from src.primitives import State
 from src.sim_components import Cart, Pendulum, System
 from src.controllers import AbstractController, ConstantController
 from src.dynamics import BasicDynamics
+from src.integrators import Integrator, RK4Integrator
 
 @dataclass
 class Simulation:
@@ -17,7 +18,8 @@ class Simulation:
     controller: AbstractController 
     state: State
     dynamics: BasicDynamics = BasicDynamics()
-    time: float = 0.0
+    integrator: Integrator = RK4Integrator()
+    time: Quantity = 0.0 * ureg.second
 
     # @timing
     def run(self, times: np.ndarray) -> list[State]:
@@ -41,14 +43,18 @@ class Simulation:
         prev_time = self.time
         self.time = time
         delta_time = time - prev_time
-        if delta_time == 0:
+        if delta_time.magnitude == 0:
             return 0 * ureg.newton  # No time has passed, no update needed
 
         # Input from control law
         u = self.controller.compute_u(self.system, self.state)
 
-        # STATE UPDATE (using nonlinear dynamics)
-        self.state = self.dynamics.nonlinear.update_state(self.system, self.state, u, delta_time)
+        # STATE UPDATE (using numerical integrator and nonlinear dynamics)
+        self.state = self.integrator.step(self.dynamics.nonlinear.calc_state_derivative, 
+                                          self.state,
+                                          delta_time.magnitude,
+                                          self.system, 
+                                          u)
 
         return u
 
@@ -65,11 +71,11 @@ def main():
     sim = Simulation(system, controller, init_state)
     
     # Output flags
-    save_animation = True
+    save_animation = False
     show_animation = True
 
     # Time frames for the animation
-    times = np.arange(0, 10, 0.001) * ureg.second
+    times = np.arange(0, 10, 0.01) * ureg.second
 
     # Run the simulation
     print("Running simulation...")
@@ -79,11 +85,11 @@ def main():
     animator = SimAnimator(system, times, {"states": states, "inputs": inputs})
 
     if save_animation:
-        print("Saving animation...")
+        print("\nSaving animation...")
         animator.save("pyndulum.gif")
 
     if show_animation:
-        print("Showing animation...")
+        print("\nShowing animation...")
         animator.show()
     
 if __name__ == "__main__":
