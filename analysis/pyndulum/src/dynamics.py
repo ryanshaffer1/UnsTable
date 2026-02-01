@@ -5,7 +5,7 @@ from pint import Quantity
 
 from src import ureg
 from src.primitives import State
-from src.sim_components import System
+from src.system import System
 
 class AbstractDynamicsModel(ABC):
     @abstractmethod

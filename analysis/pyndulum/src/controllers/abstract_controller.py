@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from src.primitives import State
-from src.sim_components import System
+from src.system import System
 
 class AbstractController(ABC):
     @abstractmethod

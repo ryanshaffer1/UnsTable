@@ -7,7 +7,7 @@ from tqdm import tqdm
 from src import ureg
 from src.animate import SimAnimator
 from src.primitives import State
-from src.sim_components import Cart, Pendulum, System
+from src.system import Cart, Pendulum, System
 from src.controllers import AbstractController, ConstantController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
@@ -21,7 +21,6 @@ class Simulation:
     integrator: Integrator = RK4Integrator()
     time: Quantity = 0.0 * ureg.second
 
-    # @timing
     def run(self, times: np.ndarray) -> list[State]:
         # Initialize output storage
         states = np.ndarray([4, len(times)], dtype=float)

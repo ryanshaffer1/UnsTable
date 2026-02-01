@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src import ureg
 from src.primitives import RectPrim, LinePrim, State
-from src.sim_components import System
+from src.system import System
 
 class AnimObject(ABC):
     @abstractmethod
@@ -104,16 +104,22 @@ class SimAnimator:
             interval = int((1/self.refresh_rate).to("millisecond").magnitude)
         )
 
-    # @timing
     def save(self, filename: str = "animation.gif"):
         self.ani.save(filename, writer="pillow", fps=self.refresh_rate.magnitude)
 
     def format_plot(self):
+        # Calculate plot limits to keep cart/pendulum in view
+        xlims = (np.min(self.state_history[0,:]), np.max(self.state_history[0,:]))*ureg.meter
+        pend_length = self.sys.pendulum.length
+        margin = 0.5 * ureg.meter
+        xlims = [xlims[0] - pend_length - margin, xlims[1] + pend_length + margin]
+        ylims = [-pend_length - margin, pend_length + margin]
+        
         # Format plot
         self.ax.xaxis.set_units(ureg.meter)
         self.ax.yaxis.set_units(ureg.meter)
-        self.ax.set_xlim(-1*ureg.meter, 1*ureg.meter)
-        self.ax.set_ylim(-1*ureg.meter, 1*ureg.meter)
+        self.ax.set_xlim(*xlims)
+        self.ax.set_ylim(*ylims)
         self.ax.set_xlabel(f"X ({self.ax.xaxis.get_units():~P})")
         self.ax.set_ylabel(f"Y ({self.ax.yaxis.get_units():~P})")
         self.ax.set_title("Inverted Pendulum System")

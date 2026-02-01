@@ -2,7 +2,7 @@ from pint import Quantity
 
 from src.controllers.abstract_controller import AbstractController
 from src.primitives import State
-from src.sim_components import System
+from src.system import System
 
 class ConstantController(AbstractController):
     def __init__(self, u: Quantity):
