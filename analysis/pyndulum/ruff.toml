@@ -1,0 +1,19 @@
+# Same as Black.
+line-length = 100
+indent-width = 4
+
+[lint]
+select = ["ALL"]
+ignore = [
+    "D", "N802", "N803", "N806",
+    "RET504",
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+dummy-variable-rgx = "^_+.*|^args|^kwargs$"
+
+[lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"]

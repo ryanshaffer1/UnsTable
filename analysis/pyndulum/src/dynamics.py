@@ -6,13 +6,22 @@ from pint import Quantity
 from src.primitives import State
 from src.system import System
 
+
 class AbstractDynamicsModel(ABC):
     @abstractmethod
     def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         pass
-    
-    def state_derivative_to_vector(self, x_dot: Quantity, x_ddot: Quantity, theta_dot: Quantity, theta_ddot: Quantity) -> np.ndarray:
-        return np.array([x_dot.magnitude, x_ddot.magnitude, theta_dot.magnitude, theta_ddot.magnitude])
+
+    def state_derivative_to_vector(self,
+                                   x_dot: Quantity,
+                                   x_ddot: Quantity,
+                                   theta_dot: Quantity,
+                                   theta_ddot: Quantity,
+                                   ) -> np.ndarray:
+        return np.array([x_dot.magnitude,
+                         x_ddot.magnitude,
+                         theta_dot.magnitude,
+                         theta_ddot.magnitude])
 
 
 class LinearizedModel(AbstractDynamicsModel):
@@ -27,7 +36,8 @@ class LinearizedModel(AbstractDynamicsModel):
         m_cart = system.m_cart
         m_pend = system.m_pend
         l_com = system.l_com
-        p = m_cart + m_pend - (m_pend**2 * l_com**2) / (moi + m_pend * l_com**2)  # denominator for the A and B matrices
+        # Denominators for the A and B matrix elements
+        p = m_cart + m_pend - (m_pend**2 * l_com**2) / (moi + m_pend * l_com**2)
         q = (m_pend**2 * l_com**2 - (moi + m_pend * l_com**2) * (m_cart + m_pend))/(m_pend*l_com)
 
         # Construct some matrix and vector elements, with units stripped for numpy
@@ -44,7 +54,7 @@ class LinearizedModel(AbstractDynamicsModel):
             [0,    1,       0,      0],
             [0,    a22,     a32,    0],
             [0,    0,       0,      1],
-            [0,    a24,     a34,    0]]
+            [0,    a24,     a34,    0]],
             )
 
         # Construct the B vector
@@ -52,7 +62,7 @@ class LinearizedModel(AbstractDynamicsModel):
             0,
             b2,
             0,
-            b4
+            b4,
             ]).reshape(-1,1)
 
         return A, B
@@ -69,7 +79,7 @@ class LinearizedModel(AbstractDynamicsModel):
 class NonlinearModel(AbstractDynamicsModel):
     def __init__(self) -> None:
         pass
-    
+
     def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         # Unpack variables
         vx = state.vx.to_base_units()
@@ -81,14 +91,21 @@ class NonlinearModel(AbstractDynamicsModel):
         m_cart = system.m_cart
         m_pend = system.m_pend
         l_com = system.l_com
-        x_ddot_coeff = 1/(m_pend**2 * l_com**2 * np.cos(theta)**2 / (moi + m_pend*l_com**2) - (m_cart + m_pend))
-        theta_ddot_coeff = m_pend * l_com * np.cos(theta) / (m_pend**2 * l_com**2 * np.cos(theta)**2 - (m_cart + m_pend) * (moi + m_pend*l_com**2))
-        
+        x_ddot_coeff = 1/(
+            m_pend**2 * l_com**2 * np.cos(theta)**2 / (moi + m_pend*l_com**2) - (m_cart + m_pend)
+            )
+        theta_ddot_coeff = m_pend * l_com * np.cos(theta) / (
+            m_pend**2 * l_com**2 * np.cos(theta)**2 - (m_cart + m_pend) * (moi + m_pend*l_com**2)
+            )
+
         # Compute derivatives
         x_dot = vx
-        x_ddot = x_ddot_coeff * (b*vx - m_pend*l_com*omega**2 * np.sin(theta) + (m_pend**2 * l_com**2 * g * np.sin(theta) * np.cos(theta)) / (moi + m_pend*l_com**2) - u)
+        x_ddot = x_ddot_coeff * (b*vx - m_pend*l_com*omega**2 * np.sin(theta) + (
+            m_pend**2 * l_com**2 * g * np.sin(theta) * np.cos(theta)) / (moi + m_pend*l_com**2) - u)
         theta_dot = omega
-        theta_ddot = theta_ddot_coeff * (-b*vx + m_pend*l_com*omega**2 * np.sin(theta) - (m_cart + m_pend) * g * np.tan(theta) + u)
+        theta_ddot = theta_ddot_coeff * (
+            -b*vx + m_pend*l_com*omega**2 * np.sin(theta) - (m_cart+m_pend) * g * np.tan(theta) + u
+            )
 
         # Return state derivative
         return self.state_derivative_to_vector(x_dot, x_ddot, theta_dot, theta_ddot)

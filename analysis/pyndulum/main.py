@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+import logging
+import logging.config
+from dataclasses import dataclass, field
 
 import numpy as np
 from pint import Quantity
@@ -6,22 +8,27 @@ from tqdm import tqdm
 
 from src import ureg
 from src.animate import SimAnimator
-from src.primitives import State
-from src.system import Actuator, Cart, Pendulum, System
 from src.controllers import AbstractController, ConstantController, LQRController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
+from src.primitives import State
+from src.system import Actuator, Cart, Pendulum, System
+from src.utils import LOGGING_CONFIG
+
+# Set up logger
+logging.config.dictConfig(LOGGING_CONFIG)
+logger = logging.getLogger("log")
 
 @dataclass
 class Simulation:
     system: System
-    controller: AbstractController 
+    controller: AbstractController
     state: State
-    dynamics: BasicDynamics = BasicDynamics()
-    integrator: Integrator = RK4Integrator()
+    dynamics: BasicDynamics = field(default_factory=BasicDynamics)
+    integrator: Integrator = field(default_factory=RK4Integrator)
     time: Quantity = 0.0 * ureg.second
 
-    def run(self, times: np.ndarray, show_progress: bool=True) -> list[State]:
+    def run(self, times: np.ndarray, *args: tuple, show_progress: bool=True) -> list[State]:
         # Initialize output storage
         states = np.ndarray([4, len(times)], dtype=float)
         inputs = np.ndarray([len(times)], dtype=float)
@@ -44,7 +51,7 @@ class Simulation:
             # Add time step to state history and input history
             states[:,i] = self.state.to_vector()
             inputs[i] = self.u.to_base_units().magnitude
-            
+
         return states, inputs
 
     def update(self, time: Quantity) -> None:
@@ -62,34 +69,35 @@ class Simulation:
             self.u = self.lag_u
 
         # STATE UPDATE (using numerical integrator and nonlinear dynamics)
-        self.state = self.integrator.step(self.dynamics.nonlinear.calc_state_derivative, 
+        self.state = self.integrator.step(self.dynamics.nonlinear.calc_state_derivative,
                                           self.state,
                                           delta_time.magnitude,
-                                          self.system, 
+                                          self.system,
                                           self.u)
 
-def main():
+def main() -> None:
     # Initialize simulation
-    init_state = State(x = 0 * ureg.meter, 
-                       vx = 0 * ureg.meter/ureg.second, 
-                       theta = 0 * ureg.degree, 
+    init_state = State(x = 0 * ureg.meter,
+                       vx = 0 * ureg.meter/ureg.second,
+                       theta = 0 * ureg.degree,
                        omega = .5 * ureg.radian/ureg.second)
-    # system = System(Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter), 
-    #                 Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
-    #                 gravity=10*ureg.meter/ureg.second**2)
+    system = System(Actuator(),
+                    Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter),
+                    Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
+                    gravity=10*ureg.meter/ureg.second**2)
     system = System(Actuator(force_limit=50*ureg.newton,
                              refresh_rate=15*ureg.hertz,
                              command_lag=0.02*ureg.second,
                              ),
                     Cart(), Pendulum())
-    # controller = ConstantController(0 * ureg.newton)
+    controller = ConstantController(0 * ureg.newton)
     controller = LQRController(
         Q=np.array([[1,0,0,0],[0,1,0,0],[0,0,10,0],[0,0,0,50]]),
-        R=1,
+        R=.1,
         system=system,
         setpoint=[0,0,0,0])
     sim = Simulation(system, controller, init_state)
-    
+
     # Output flags
     save_animation = False
     show_animation = True
@@ -98,19 +106,19 @@ def main():
     times = np.arange(0, 10, 0.01) * ureg.second
 
     # Run the simulation
-    print("Running simulation...")
+    logger.info("Running simulation...")
     states, inputs = sim.run(times)
 
     # Create the animator and show the animation
     animator = SimAnimator(system, times, {"states": states, "inputs": inputs})
 
     if save_animation:
-        print("\nSaving animation...")
+        logger.info("Saving animation...")
         animator.save("pyndulum.gif")
 
     if show_animation:
-        print("\nShowing animation...")
+        logger.info("Showing animation...")
         animator.show()
-    
+
 if __name__ == "__main__":
     main()
