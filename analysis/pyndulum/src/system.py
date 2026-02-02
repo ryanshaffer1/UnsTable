@@ -5,6 +5,24 @@ from pint import Quantity
 from src import ureg
 from src.primitives import LinePrim, RectPrim, State
 
+@dataclass
+class Actuator:
+    force_limit: Quantity | None = None
+    refresh_rate: Quantity | None = None
+    command_lag: Quantity | None = None
+
+
+    def enforce_limit(self, u: Quantity) -> Quantity:
+        if self.force_limit and abs(u) > self.force_limit:
+            u = np.sign(u) * self.force_limit
+        
+        return u
+
+    def is_update_time(self, time: Quantity, dt: Quantity) -> bool:
+        return (self.refresh_rate is None) or (dt==0) or (time % (1/self.refresh_rate) < dt)
+
+    def is_past_lag_time(self, time: Quantity, lag_window_start: Quantity) -> bool:
+        return (self.command_lag is None) or (time - lag_window_start >= self.command_lag)
 
 @dataclass
 class Cart(RectPrim):
@@ -55,6 +73,7 @@ class Pendulum(LinePrim):
 
 @dataclass
 class System:
+    actuator: Actuator
     cart: Cart
     pendulum: Pendulum
     gravity: Quantity = 9.81 * ureg.meter / ureg.second**2

@@ -23,7 +23,7 @@ class LQRController(AbstractController):
         self.setpoint = setpoint
 
         # Ensure that R is a 2dmatrix
-        if isinstance(self.R, float):
+        if isinstance(self.R, float | int):
             self.R = np.array([self.R]).reshape(1, 1)
         
         self.K = self.calc_k(linear_dynamics, system)
@@ -45,5 +45,5 @@ class LQRController(AbstractController):
         u_requested = u[0] * ureg.newton
         
         # Enforce actuator limit
-        u = self.enforce_limit(u_requested)
+        u = system.actuator.enforce_limit(u_requested)
         return u

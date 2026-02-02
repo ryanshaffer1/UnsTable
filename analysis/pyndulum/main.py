@@ -7,7 +7,7 @@ from tqdm import tqdm
 from src import ureg
 from src.animate import SimAnimator
 from src.primitives import State
-from src.system import Cart, Pendulum, System
+from src.system import Actuator, Cart, Pendulum, System
 from src.controllers import AbstractController, ConstantController, LQRController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
@@ -21,41 +21,52 @@ class Simulation:
     integrator: Integrator = RK4Integrator()
     time: Quantity = 0.0 * ureg.second
 
-    def run(self, times: np.ndarray) -> list[State]:
+    def run(self, times: np.ndarray, show_progress: bool=True) -> list[State]:
         # Initialize output storage
         states = np.ndarray([4, len(times)], dtype=float)
         inputs = np.ndarray([len(times)], dtype=float)
 
+        # Initialize control input at zero
+        self.u = 0 * ureg.newton
+        self.lag_u = 0 * ureg.newton
+        # Initialize lag window to simulation start time
+        self.lag_window_start = times[0]
+
+        # Wrap times in tqdm to show progress bar
+        if show_progress:
+            times = tqdm(times)
+
         # Iterate through all simulation times
         for i, t in enumerate(times):
             # Update state and control input
-            u = self.update(t)
+            self.update(t)
 
             # Add time step to state history and input history
             states[:,i] = self.state.to_vector()
-            inputs[i] = u.magnitude
+            inputs[i] = self.u.to_base_units().magnitude
             
         return states, inputs
 
-    def update(self, time: Quantity) -> Quantity:
+    def update(self, time: Quantity) -> None:
         # Update sim time and track time step
         prev_time = self.time
         self.time = time
         delta_time = time - prev_time
-        if delta_time.magnitude == 0:
-            return 0 * ureg.newton  # No time has passed, no update needed
 
-        # Input from control law
-        u = self.controller.compute_u(self.system, self.state)
+        # Update the commanded actuator input based on control law
+        if self.system.actuator.is_update_time(time, delta_time):
+            self.lag_u = self.controller.compute_u(self.system, self.state)
+            self.lag_window_start = self.time
+        # Actually apply the new actuator input if the lag window is satisfied
+        if self.system.actuator.is_past_lag_time(time, self.lag_window_start):
+            self.u = self.lag_u
 
         # STATE UPDATE (using numerical integrator and nonlinear dynamics)
         self.state = self.integrator.step(self.dynamics.nonlinear.calc_state_derivative, 
                                           self.state,
                                           delta_time.magnitude,
                                           self.system, 
-                                          u)
-
-        return u
+                                          self.u)
 
 def main():
     # Initialize simulation
@@ -66,14 +77,17 @@ def main():
     # system = System(Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter), 
     #                 Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
     #                 gravity=10*ureg.meter/ureg.second**2)
-    system = System(Cart(), Pendulum())
+    system = System(Actuator(force_limit=50*ureg.newton,
+                             refresh_rate=15*ureg.hertz,
+                             command_lag=0.02*ureg.second,
+                             ),
+                    Cart(), Pendulum())
     # controller = ConstantController(0 * ureg.newton)
     controller = LQRController(
         Q=np.array([[1,0,0,0],[0,1,0,0],[0,0,10,0],[0,0,0,50]]),
-        R=0.01,
+        R=1,
         system=system,
-        setpoint=[0,0,0,0],
-        limit=10*ureg.newton)
+        setpoint=[0,0,0,0])
     sim = Simulation(system, controller, init_state)
     
     # Output flags
@@ -85,7 +99,7 @@ def main():
 
     # Run the simulation
     print("Running simulation...")
-    states, inputs = sim.run(tqdm(times))
+    states, inputs = sim.run(times)
 
     # Create the animator and show the animation
     animator = SimAnimator(system, times, {"states": states, "inputs": inputs})
