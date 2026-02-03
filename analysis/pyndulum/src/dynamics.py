@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from pint import Quantity
 
+from src import ureg
 from src.primitives import State
 from src.system import System
 
@@ -11,17 +12,6 @@ class AbstractDynamicsModel(ABC):
     @abstractmethod
     def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         pass
-
-    def state_derivative_to_vector(self,
-                                   x_dot: Quantity,
-                                   x_ddot: Quantity,
-                                   theta_dot: Quantity,
-                                   theta_ddot: Quantity,
-                                   ) -> np.ndarray:
-        return np.array([x_dot.magnitude,
-                         x_ddot.magnitude,
-                         theta_dot.magnitude,
-                         theta_ddot.magnitude])
 
 
 class LinearizedModel(AbstractDynamicsModel):
@@ -36,18 +26,40 @@ class LinearizedModel(AbstractDynamicsModel):
         m_cart = system.m_cart
         m_pend = system.m_pend
         l_com = system.l_com
+
+        A, B = self.get_A_B_unitless(m_cart, m_pend, l_com, moi, g, b)
+        return A, B
+
+    # Check, then strip, units from the equations of motion
+    @ureg.wraps(None,
+                (None,
+                 ureg.kilogram,
+                 ureg.kilogram,
+                 ureg.meter,
+                 ureg.kilogram*ureg.meter**2,
+                 ureg.meter/ureg.second**2,
+                 ureg.newton*ureg.second/ureg.meter,
+                 ), strict=True)
+    def get_A_B_unitless(self, # noqa: PLR0913
+                         m_cart: float,
+                         m_pend: float,
+                         l_com: float,
+                         moi: float,
+                         g: float,
+                         b: float,
+                         ) -> tuple[np.ndarray, np.ndarray]:
         # Denominators for the A and B matrix elements
         p = m_cart + m_pend - (m_pend**2 * l_com**2) / (moi + m_pend * l_com**2)
         q = (m_pend**2 * l_com**2 - (moi + m_pend * l_com**2) * (m_cart + m_pend))/(m_pend*l_com)
 
-        # Construct some matrix and vector elements, with units stripped for numpy
-        a22 = (-b / p).magnitude
-        a32 = (-g * m_pend**2 * l_com**2 / (p * (moi + m_pend * l_com**2))).magnitude
-        a24 = (-b / q).magnitude
-        a34 = ((-1 * (m_cart + m_pend) * g)/q).magnitude
+        # Calculate the non-trivial matrix and vector elements
+        a22 = (-b / p)
+        a32 = (-g * m_pend**2 * l_com**2 / (p * (moi + m_pend * l_com**2)))
+        a24 = (-b / q)
+        a34 = ((-1 * (m_cart + m_pend) * g)/q)
 
-        b2 = (1/p).magnitude
-        b4 = (1/q).magnitude
+        b2 = (1/p)
+        b4 = (1/q)
 
         # Construct the A matrix
         A = np.array([
@@ -82,15 +94,50 @@ class NonlinearModel(AbstractDynamicsModel):
 
     def calc_state_derivative(self, state: State, system: System, u: Quantity) -> np.ndarray:
         # Unpack variables
-        vx = state.vx.to_base_units()
-        theta = state.theta.to_base_units()
-        omega = state.omega.to_base_units()
+        vx = state.vx
+        theta = state.theta
+        omega = state.omega
         b = system.b
         g = system.g
         moi = system.moi_pend
         m_cart = system.m_cart
         m_pend = system.m_pend
         l_com = system.l_com
+
+        # Solve equations of motion with units checked and stripped
+        x_dot, x_ddot, theta_dot, theta_ddot = self.calc_state_derivative_unitless(
+            vx, theta, omega, m_cart, m_pend, l_com, moi, g, b, u,
+        )
+
+        # Return state derivative as array
+        return np.array([x_dot, x_ddot, theta_dot, theta_ddot])
+
+    # Check, then strip, units from the equations of motion
+    @ureg.wraps(None,
+                (None,
+                 ureg.meter/ureg.second,
+                 ureg.radian,
+                 ureg.radian/ureg.second,
+                 ureg.kilogram,
+                 ureg.kilogram,
+                 ureg.meter,
+                 ureg.kilogram*ureg.meter**2,
+                 ureg.meter/ureg.second**2,
+                 ureg.newton*ureg.second/ureg.meter,
+                 ureg.newton,
+                 ), strict=True)
+    def calc_state_derivative_unitless(self, # noqa: PLR0913
+                                       vx: float,
+                                       theta: float,
+                                       omega: float,
+                                       m_cart: float,
+                                       m_pend: float,
+                                       l_com: float,
+                                       moi: float,
+                                       g: float,
+                                       b: float,
+                                       u: float,
+                                       ) -> tuple[float, float, float, float]:
         x_ddot_coeff = 1/(
             m_pend**2 * l_com**2 * np.cos(theta)**2 / (moi + m_pend*l_com**2) - (m_cart + m_pend)
             )
@@ -104,11 +151,10 @@ class NonlinearModel(AbstractDynamicsModel):
             m_pend**2 * l_com**2 * g * np.sin(theta) * np.cos(theta)) / (moi + m_pend*l_com**2) - u)
         theta_dot = omega
         theta_ddot = theta_ddot_coeff * (
-            -b*vx + m_pend*l_com*omega**2 * np.sin(theta) - (m_cart+m_pend) * g * np.tan(theta) + u
+            -b*vx + m_pend*l_com*omega**2 * np.sin(theta) - (m_cart+ m_pend) * g * np.tan(theta) + u
             )
+        return x_dot, x_ddot, theta_dot, theta_ddot
 
-        # Return state derivative
-        return self.state_derivative_to_vector(x_dot, x_ddot, theta_dot, theta_ddot)
 
 class BasicDynamics:
     def __init__(self) -> None:

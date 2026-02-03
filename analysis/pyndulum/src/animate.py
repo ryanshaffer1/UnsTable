@@ -74,6 +74,8 @@ class SimAnimator:
                  times: Quantity,
                  histories: dict[str, np.ndarray],
                  refresh_rate: Quantity = 30 * ureg.hertz,
+                 *args: tuple,
+                 show_progress: bool = True,
                  ) -> None:
         self.sys = system
         self.state_history = histories["states"]
@@ -99,11 +101,15 @@ class SimAnimator:
         steps_per_frame = max(1, int(1 / self.refresh_rate / sim_time_step))
         frames = range(0, len(times), steps_per_frame)
 
+        # Wrap times in tqdm to show progress bar
+        if show_progress:
+            frames = tqdm(frames)
+
         # Create animation object with callbacks to initialize and update methods
         self.ani = FuncAnimation(
             self.fig,
             func=self.update,
-            frames=tqdm(frames),
+            frames=frames,
             init_func=self.init_anim,
             blit=True, # Blitting optimizes drawing
             interval = int((1/self.refresh_rate).to("millisecond").magnitude),

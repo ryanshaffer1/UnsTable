@@ -66,7 +66,8 @@ class Pendulum(LinePrim):
         if self.length_pivot_to_centroid is None:
             self.length_pivot_to_centroid = self.length / 2  # Distance from pivot to center of mass
 
-    def get_endpoints(self, state: State) -> tuple[tuple[float, float], tuple[float, float]]:
+    def get_endpoints(self, state: State,
+                      ) -> tuple[tuple[Quantity, Quantity], tuple[Quantity, Quantity]]:
         cart_x = state.x
         theta = state.theta
         bob_x = cart_x + self.length * np.sin(theta)

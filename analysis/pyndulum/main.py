@@ -1,5 +1,7 @@
+import cProfile
 import logging
 import logging.config
+import sys
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -99,18 +101,20 @@ def main() -> None:
     sim = Simulation(system, controller, init_state)
 
     # Output flags
+    show_progress = False
     save_animation = False
-    show_animation = True
+    show_animation = False
 
     # Time frames for the animation
     times = np.arange(0, 10, 0.01) * ureg.second
 
     # Run the simulation
     logger.info("Running simulation...")
-    states, inputs = sim.run(times)
+    states, inputs = sim.run(times, show_progress=show_progress)
 
     # Create the animator and show the animation
-    animator = SimAnimator(system, times, {"states": states, "inputs": inputs})
+    histories = {"states": states, "inputs": inputs}
+    animator = SimAnimator(system, times, histories, show_progress=show_progress)
 
     if save_animation:
         logger.info("Saving animation...")
@@ -121,4 +125,14 @@ def main() -> None:
         animator.show()
 
 if __name__ == "__main__":
+    profiling = "--profile" in sys.argv[1:]
+
+    if profiling:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
     main()
+
+    if profiling:
+        profiler.disable()
+        profiler.dump_stats("profile.dat")
