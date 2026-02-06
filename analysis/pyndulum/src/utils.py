@@ -18,7 +18,7 @@ LOGGING_CONFIG = {
             "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         },
         "light_formatter": {
-            "format": "\n%(asctime)s: %(levelname)s: %(message)s",
+            "format": "%(asctime)s: %(levelname)s: %(message)s",
             "datefmt": "%H:%M:%S",
         },
         "heavy_formatter": {

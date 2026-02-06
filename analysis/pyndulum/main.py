@@ -5,6 +5,7 @@ import sys
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 from pint import Quantity
 from tqdm import tqdm
 
@@ -13,7 +14,8 @@ from src.animate import SimAnimator
 from src.controllers import AbstractController, ConstantController, LQRController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
-from src.primitives import State
+from src.outputs import record_outputs
+from src.primitives import Input, State
 from src.system import Actuator, Cart, Pendulum, System
 from src.utils import LOGGING_CONFIG
 
@@ -80,22 +82,22 @@ class Simulation:
 def main() -> None:
     # Initialize simulation
     init_state = State(x = 0 * ureg.meter,
-                       vx = 0 * ureg.meter/ureg.second,
+                       vx = 1 * ureg.meter/ureg.second,
                        theta = 0 * ureg.degree,
-                       omega = .5 * ureg.radian/ureg.second)
+                       omega = 0 * ureg.radian/ureg.second)
     system = System(Actuator(),
                     Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter),
                     Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
                     gravity=10*ureg.meter/ureg.second**2)
     system = System(Actuator(force_limit=50*ureg.newton,
-                             refresh_rate=10*ureg.hertz,
-                             command_lag=0.02*ureg.second,
+                             refresh_rate=20*ureg.hertz,
+                             command_lag=0.002*ureg.second,
                              ),
                     Cart(), Pendulum())
     controller = ConstantController(0 * ureg.newton)
     controller = LQRController(
-        Q=np.array([[1,0,0,0],[0,1,0,0],[0,0,10,0],[0,0,0,50]]),
-        R=0.5,
+        Q=np.array([[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]),
+        R=1,
         system=system,
         setpoint=[0,0,0,0])
     sim = Simulation(system, controller, init_state)
@@ -111,9 +113,16 @@ def main() -> None:
     # Run the simulation
     logger.info("Running simulation...")
     states, inputs = sim.run(times, show_progress=show_progress)
+    histories = {"states": states, "inputs": inputs} # TODO: replace with output_df
+
+    # Build output dataframe and record output metrics
+    output_df = pd.concat((State.history_to_dataframe(states, times),
+                           Input.history_to_dataframe(inputs, times)),
+                          axis=1)
+    record_outputs(output_df, step_variable="vx")
+
 
     # Create the animator and show the animation
-    histories = {"states": states, "inputs": inputs}
     animator = SimAnimator(system, times, histories, show_progress=show_progress)
 
     if save_animation:

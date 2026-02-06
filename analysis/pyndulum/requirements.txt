@@ -1,5 +1,7 @@
 matplotlib
 numpy
+pandas
 pint
+pint-pandas
 scipy
 tqdm
