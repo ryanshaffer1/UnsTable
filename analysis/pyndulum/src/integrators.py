@@ -17,9 +17,7 @@ class EulerIntegrator(Integrator):
         state_derivative = func(state, *args, **kwargs)
 
         # Euler integration to get new state
-        new_state = State.from_vector(
-            state.to_vector() + state_derivative * dt,
-        )
+        new_state = state.add_vector(state_derivative * dt)
         return new_state
 
 
@@ -29,19 +27,17 @@ class RK4Integrator(Integrator):
         k1 = func(state, *args, **kwargs)
 
         # Compute k2
-        state_k2 = State.from_vector(state.to_vector() + 0.5 * k1 * dt)
+        state_k2 = state.add_vector(0.5 * k1 * dt)
         k2 = func(state_k2, *args, **kwargs)
 
         # Compute k3
-        state_k3 = State.from_vector(state.to_vector() + 0.5 * k2 * dt)
+        state_k3 = state.add_vector(0.5 * k2 * dt)
         k3 = func(state_k3, *args, **kwargs)
 
         # Compute k4
-        state_k4 = State.from_vector(state.to_vector() + k3 * dt)
+        state_k4 = state.add_vector(k3 * dt)
         k4 = func(state_k4, *args, **kwargs)
 
         # Combine to get new state
-        new_state = State.from_vector(
-            state.to_vector() + (dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4),
-        )
+        new_state = state.add_vector((dt / 6) * (k1 + 2 * k2 + 2 * k3 + k4))
         return new_state

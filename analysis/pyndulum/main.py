@@ -88,25 +88,25 @@ def main() -> None:
                     Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
                     gravity=10*ureg.meter/ureg.second**2)
     system = System(Actuator(force_limit=50*ureg.newton,
-                             refresh_rate=15*ureg.hertz,
+                             refresh_rate=10*ureg.hertz,
                              command_lag=0.02*ureg.second,
                              ),
                     Cart(), Pendulum())
     controller = ConstantController(0 * ureg.newton)
     controller = LQRController(
         Q=np.array([[1,0,0,0],[0,1,0,0],[0,0,10,0],[0,0,0,50]]),
-        R=.1,
+        R=0.5,
         system=system,
         setpoint=[0,0,0,0])
     sim = Simulation(system, controller, init_state)
 
     # Output flags
-    show_progress = False
+    show_progress = True
     save_animation = False
-    show_animation = False
+    show_animation = True
 
     # Time frames for the animation
-    times = np.arange(0, 10, 0.01) * ureg.second
+    times = np.arange(0, 10, 0.001) * ureg.second
 
     # Run the simulation
     logger.info("Running simulation...")
