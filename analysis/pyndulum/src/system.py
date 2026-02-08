@@ -4,7 +4,7 @@ import numpy as np
 from pint import Quantity
 
 from src import ureg
-from src.primitives import LinePrim, RectPrim, State
+from src.primitives import BeamPrim, BlockPrim, State
 
 
 @dataclass
@@ -27,7 +27,7 @@ class Actuator:
         return (self.command_lag is None) or (time - lag_window_start >= self.command_lag)
 
 @dataclass
-class Cart(RectPrim):
+class Cart(BlockPrim):
     mass: Quantity = 1 * ureg.kg
     y_top: Quantity = 0 * ureg["inch"]
     width: Quantity = 8 * ureg["inch"]
@@ -45,7 +45,7 @@ class Cart(RectPrim):
         return (state.x - self.width / 2, self.y_top - self.height)
 
 @dataclass
-class Pendulum(LinePrim):
+class Pendulum(BeamPrim):
     mass: Quantity = 2 * ureg.kg
     length: Quantity = 24 * ureg["inch"]
     y_pivot: Quantity = 0 * ureg["inch"]

@@ -1,5 +1,3 @@
-from abc import ABC, abstractmethod
-
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
@@ -8,65 +6,10 @@ from pint import Quantity
 from tqdm import tqdm
 
 from src import ureg
-from src.primitives import LinePrim, RectPrim, State
+from src.animation import objects
+from src.primitives import State
 from src.system import System
 
-
-class AnimObject(ABC):
-    @abstractmethod
-    def initialize(self) -> plt.Artist:
-        pass
-    @abstractmethod
-    def update(self, state: State, time: float) -> plt.Artist:
-        pass
-
-class AnimRectangle(AnimObject):
-    def __init__(self, source: RectPrim, ax: plt.Axes, **kwargs: dict) -> None:
-        self.source = source
-        self.rect = ax.add_patch(Rectangle((0,0), source.width, source.height, **kwargs))
-
-    def initialize(self) -> Rectangle:
-        self.rect.set_xy(([],[]))
-        return self.rect
-
-    def update(self, state: State, *args: tuple, **kwargs: dict) -> Rectangle:
-        ll_corner = self.source.get_ll_corner(state)
-        self.rect.set_xy(coord for coord in ll_corner)
-        return self.rect
-
-class AnimLine(AnimObject):
-    def __init__(self, source: LinePrim, ax: plt.Axes, **kwargs: dict) -> None:
-        self.source = source
-        self.line, = ax.plot([], [], **kwargs)
-
-    def initialize(self) -> plt.Line2D:
-        self.line.set_data([], [])
-        return self.line
-
-    def update(self, state: State, *args: tuple, **kwargs: dict) -> plt.Line2D:
-        endpoints = self.source.get_endpoints(state)
-        x_data = [endpoints[0][0], endpoints[1][0]]
-        y_data = [endpoints[0][1], endpoints[1][1]]
-        self.line.set_data(x_data, y_data)
-        return self.line
-
-class AnimText(AnimObject):
-    def __init__(self, fmt: str, ax: plt.Axes, x: float, y: float, **kwargs: dict) -> None:
-        self.fmt = fmt
-        self.text = ax.text(x, y, "", **kwargs)
-
-    def initialize(self) -> plt.Text:
-        self.text.set_text("")
-        return self.text
-
-    def update(self, state: State, time: Quantity, *args: tuple, **kwargs: dict) -> plt.Text:
-        # Convert state values to display units
-        display_state = state.to_display_units()
-
-        text_vars = {**display_state, "time": time, **kwargs}
-        content = self.fmt.format(**text_vars)
-        self.text.set_text(content)
-        return self.text
 
 class SimAnimator:
     def __init__(self,
@@ -86,15 +29,23 @@ class SimAnimator:
         self.format_plot()
 
         # Add animated objects and labels
-        self.objects = [AnimRectangle(self.sys.cart, self.ax, color="gray"),
-                        AnimLine(self.sys.pendulum, self.ax,
-                                 lw=max(1,self.sys.pendulum.thickness.magnitude), color="brown"),
-                        AnimText("Time: {time:.2f~P}", self.ax, x=0.02, y=0.02,
-                                 bbox=self.textbox_format, transform=self.ax.transAxes, ha="left"),
-                        AnimText("x={x:.2f~P}\n"+r"$v_x$={vx:.2f~P}"+"\n"+r"$\theta$={theta:.2f~P}"+"\n"+r"$\omega$={omega:.2f~P}"+"\n"+r"u={u:.2f~P}",
-                                 self.ax, x=0.98, y=0.02, bbox=self.textbox_format,
-                                 transform=self.ax.transAxes, ha="right"),
-                        ]
+        cart_anim = objects.AnimRectangle(self.sys.cart, self.ax, color="gray")
+        pend_base_anim = objects.AnimLine(self.sys.pendulum, self.ax,
+                                          lw=max(1,self.sys.pendulum.thickness.magnitude),
+                                          color="brown")
+        pend_top_anim = objects.OffsetAnimLine(pend_base_anim, self.ax,
+                                               offset=("end", 0*ureg.meter, 0*ureg.meter, 90*ureg.degree),
+                                               length=self.sys.pendulum.length, # TODO make this variable
+                                               lw=max(1,self.sys.pendulum.thickness.magnitude),
+                                               color="saddlebrown")
+        time_text_anim = objects.AnimText("Time: {time:.2f~P}", self.ax, x=0.02, y=0.02,
+                                          bbox=self.textbox_format, transform=self.ax.transAxes,
+                                          ha="left")
+        state_text_anim = objects.AnimText("x={x:.2f~P}\n"+r"$v_x$={vx:.2f~P}"+"\n"+r"$\theta$={theta:.2f~P}"+"\n"+r"$\omega$={omega:.2f~P}"+"\n"+r"u={u:.2f~P}",
+                                           self.ax, x=0.98, y=0.02, bbox=self.textbox_format,
+                                           transform=self.ax.transAxes, ha="right")
+
+        self.objects = [cart_anim, pend_base_anim, pend_top_anim, time_text_anim, state_text_anim]
 
         # Calculate frames to control animation refresh rate
         sim_time_step = times[1] - times[0]

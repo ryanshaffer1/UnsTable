@@ -120,7 +120,8 @@ class Input:
         df["input"] = df["input"].pint.to(ureg.newton)
         return df
 
-class RectPrim(ABC):
+
+class BlockPrim(ABC):
     width: Quantity
     height: Quantity
 
@@ -134,7 +135,7 @@ class RectPrim(ABC):
     def get_height(self) -> Quantity:
         return self.height
 
-class LinePrim(ABC):
+class BeamPrim(ABC):
     length: Quantity
     thickness: Quantity
 

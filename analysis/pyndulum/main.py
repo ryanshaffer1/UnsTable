@@ -10,7 +10,7 @@ from pint import Quantity
 from tqdm import tqdm
 
 from src import ureg
-from src.animate import SimAnimator
+from src.animation import SimAnimator
 from src.controllers import AbstractController, ConstantController, LQRController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
