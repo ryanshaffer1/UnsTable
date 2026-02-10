@@ -1,23 +1,26 @@
+import argparse
 import cProfile
 import logging
 import logging.config
 import sys
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 from pint import Quantity
 from tqdm import tqdm
 
 from src import ureg
 from src.animation import SimAnimator
-from src.controllers import AbstractController, ConstantController, LQRController
+from src.controllers import AbstractController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
 from src.outputs import record_outputs
 from src.primitives import Input, State
-from src.system import Actuator, Cart, Pendulum, System
-from src.utils import LOGGING_CONFIG
+from src.system import System
+from src.utils import LOGGING_CONFIG, add_yaml_constructors
 
 # Set up logger
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -31,6 +34,14 @@ class Simulation:
     dynamics: BasicDynamics = field(default_factory=BasicDynamics)
     integrator: Integrator = field(default_factory=RK4Integrator)
     time: Quantity = 0.0 * ureg.second
+
+    def __post_init__(self) -> None:
+        # Iterate over all defined fields in the dataclass
+        for f in fields(self):
+            # Check if the current value is None and if a default_factory was specified
+            if getattr(self, f.name) is None and f.default_factory is not MISSING:
+                # If both are true, call the default_factory and set the attribute
+                setattr(self, f.name, f.default_factory())
 
     def run(self, times: np.ndarray, *args: tuple, show_progress: bool=True) -> list[State]:
         # Initialize output storage
@@ -79,40 +90,30 @@ class Simulation:
                                           self.system,
                                           self.u)
 
-def main() -> None:
+def main(parameter_file: Path) -> None:
+    add_yaml_constructors()
+
+    with parameter_file.open("r") as stream:
+        params = yaml.safe_load(stream)
+
+    # Unpack required parameters from YAML file
+    system = params["system"]
+    controller = params["controller"]
+    init_state = params["initial_state"]
+    times = params["times"]
+    flags = params.get("flags", {})
+
     # Initialize simulation
-    init_state = State(x = 0 * ureg.meter,
-                       vx = 1 * ureg.meter/ureg.second,
-                       theta = 0 * ureg.degree,
-                       omega = 0 * ureg.radian/ureg.second)
-    system = System(Actuator(),
-                    Cart(mass=5*ureg.kg, friction_coeff=1*ureg.newton*ureg.second/ureg.meter),
-                    Pendulum(mass=1*ureg.kg, length=2*ureg.meter),
-                    gravity=10*ureg.meter/ureg.second**2)
-    system = System(Actuator(force_limit=50*ureg.newton,
-                             refresh_rate=20*ureg.hertz,
-                             command_lag=0.002*ureg.second,
-                             ),
-                    Cart(), Pendulum())
-    controller = ConstantController(0 * ureg.newton)
-    controller = LQRController(
-        Q=np.array([[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]),
-        R=1,
-        system=system,
-        setpoint=[0,0,0,0])
-    sim = Simulation(system, controller, init_state)
-
-    # Output flags
-    show_progress = True
-    save_animation = False
-    show_animation = True
-
-    # Time frames for the animation
-    times = np.arange(0, 10, 0.001) * ureg.second
+    sim = Simulation(system=system,
+                     controller=controller,
+                     state=init_state,
+                     dynamics=params.get("dynamics"),
+                     integrator=params.get("integrator"),
+                     )
 
     # Run the simulation
     logger.info("Running simulation...")
-    states, inputs = sim.run(times, show_progress=show_progress)
+    states, inputs = sim.run(times, show_progress=flags.get("show_progress", True))
     histories = {"states": states, "inputs": inputs} # TODO: replace with output_df
 
     # Build output dataframe and record output metrics
@@ -123,15 +124,21 @@ def main() -> None:
 
 
     # Create the animator and show the animation
-    animator = SimAnimator(system, times, histories, show_progress=show_progress)
+    animator = SimAnimator(system, times, histories, show_progress=flags.get("show_progress", True))
 
-    if save_animation:
+    if flags.get("save_animation", False):
         logger.info("Saving animation...")
         animator.save("pyndulum.gif")
 
-    if show_animation:
+    if flags.get("show_animation", True):
         logger.info("Showing animation...")
         animator.show()
+
+def cli(args: list[str]) -> tuple[Path]:
+    parser = argparse.ArgumentParser(description="Simulate and animate a cart-pendulum system.")
+    parser.add_argument("--parameter-file", type=Path, default=Path("inputs/simple.yaml"),
+                        help="Path to YAML file containing system parameters.")
+    return (parser.parse_args(args).parameter_file,)
 
 if __name__ == "__main__":
     profiling = "--profile" in sys.argv[1:]
@@ -140,7 +147,7 @@ if __name__ == "__main__":
         profiler = cProfile.Profile()
         profiler.enable()
 
-    main()
+    main(*cli(sys.argv[1:]))
 
     if profiling:
         profiler.disable()

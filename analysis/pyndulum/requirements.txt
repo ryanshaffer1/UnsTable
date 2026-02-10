@@ -3,5 +3,6 @@ numpy
 pandas
 pint
 pint-pandas
+pyyaml
 scipy
 tqdm

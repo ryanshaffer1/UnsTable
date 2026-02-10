@@ -1,0 +1,26 @@
+system: &sys !System
+  actuator: !Actuator
+    force_limit: !unit 50 newton
+    refresh_rate: !unit 20 hertz
+    command_lag: !unit 2 millisecond
+  cart: !Cart {}
+  pendulum: !Pendulum {}
+
+controller: !LQRController
+  Q:  !array [[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]
+  R: 1
+  system: *sys
+  setpoint: [0,0,0,0]
+
+initial_state: !State
+  x: !unit 0 meter
+  vx: !unit 1 meter/second
+  theta: !unit 0 degree
+  omega: !unit 0 degree/second
+
+times: !unit [!range [0, 10, 0.001], second]
+
+flags:
+  show_progress: True
+  save_animation: True
+  show_animation: True
