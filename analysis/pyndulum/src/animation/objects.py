@@ -41,7 +41,7 @@ class AnimLine(AnimObject):
         return self.line
 
     def get_updated_pos(self, state: State) -> tuple[list, list]:
-        endpoints = self.source.get_endpoints(state)
+        endpoints = self.source.get_endpoints(state.x, state.theta)
         x_data = [endpoints[0][0], endpoints[1][0]]
         y_data = [endpoints[0][1], endpoints[1][1]]
         return x_data, y_data
@@ -93,7 +93,7 @@ class OffsetAnimLine(AnimLine):
                                   center_pt: tuple[Quantity, Quantity],
                                   line_angle: Quantity,
                                   length: Quantity,
-                                  ):
+                                  ) -> tuple[list[Quantity], list[Quantity]]:
         half_length = length / 2
         start_pt = self.point_offset_from_line(center_pt, line_angle, -half_length, 0*ureg.meter)
         end_pt = self.point_offset_from_line(center_pt, line_angle, half_length, 0*ureg.meter)

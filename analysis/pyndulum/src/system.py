@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from pint import Quantity
 
 from src import ureg
@@ -66,13 +67,12 @@ class Pendulum(BeamPrim):
         if self.length_pivot_to_centroid is None:
             self.length_pivot_to_centroid = self.length / 2  # Distance from pivot to center of mass
 
-    def get_endpoints(self, state: State,
-                      ) -> tuple[tuple[Quantity, Quantity], tuple[Quantity, Quantity]]:
-        cart_x = state.x
-        theta = state.theta
-        bob_x = cart_x + self.length * np.sin(theta)
-        bob_y = self.y_pivot + self.length * np.cos(theta)
-        return (cart_x, self.y_pivot), (bob_x, bob_y)
+    @ureg.wraps(("meter", "meter"), (None, "meter", "radian"), strict=False)
+    def get_endpoints(self, x: float, theta: float,
+                      ) -> tuple[tuple[float, float], tuple[float, float]]:
+        bob_x = x + self.length.magnitude * np.sin(theta)
+        bob_y = self.y_pivot.magnitude + self.length.magnitude * np.cos(theta)
+        return (x, self.y_pivot.magnitude), (bob_x, bob_y)
 
 @dataclass
 class System:
@@ -97,13 +97,13 @@ class System:
         self.l_com = self.pendulum.length_pivot_to_centroid
 
 
-    def trace_pend_endpoint_history(self, state_history: np.ndarray) -> np.ndarray:
-        # Allocate array for output
-        endpoint_history = np.zeros([4, state_history.shape[1]])
-        # Iterate through states in state history
-        for i, row in enumerate(state_history.T):
-            # Calculate and store the tip position
-            base_pos, tip_pos = self.pendulum.get_endpoints(State.from_vector(row))
-            endpoint_history[0:2, i] = Quantity.from_sequence(base_pos).to_base_units().magnitude
-            endpoint_history[2:4, i] = Quantity.from_sequence(tip_pos).to_base_units().magnitude
+    def trace_pend_endpoint_history(self, history: pd.DataFrame) -> pd.DataFrame:
+        # Calculate the pendulum endpoint history based on the state history and system parameters
+        endpoint_history = history[["x","theta"]].apply(lambda row:
+            self.pendulum.get_endpoints(row["x"], row["theta"]),
+            axis=1, result_type="expand")
+        endpoint_history = endpoint_history.assign(base_x=endpoint_history[0].apply(lambda p: p[0]),
+                                                   base_y=endpoint_history[0].apply(lambda p: p[1]),
+                                                   tip_x=endpoint_history[1].apply(lambda p: p[0]),
+                                                   tip_y=endpoint_history[1].apply(lambda p: p[1]))
         return endpoint_history

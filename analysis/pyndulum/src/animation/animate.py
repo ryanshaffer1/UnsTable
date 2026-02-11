@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Rectangle
 from pint import Quantity
@@ -15,14 +16,13 @@ class SimAnimator:
     def __init__(self,
                  system: System,
                  times: Quantity,
-                 histories: dict[str, np.ndarray],
+                 history_df: pd.DataFrame,
                  refresh_rate: Quantity = 30 * ureg.hertz,
                  *args: tuple,
                  show_progress: bool = True,
                  ) -> None:
         self.sys = system
-        self.state_history = histories["states"]
-        self.input_history = histories["inputs"]
+        self.history = history_df
         self.times = times
         self.fig, self.ax = plt.subplots()
         self.refresh_rate = refresh_rate
@@ -71,9 +71,11 @@ class SimAnimator:
 
     def format_plot(self) -> None:
         # Calculate plot limits to keep cart/pendulum in view
-        endpoint_history = self.sys.trace_pend_endpoint_history(self.state_history)
-        xlims = (np.min(endpoint_history[[0,2],:]), np.max(endpoint_history[[0,2],:]))*ureg.meter
-        ylims = (np.min(endpoint_history[[1,3],:]), np.max(endpoint_history[[1,3],:]))*ureg.meter
+        endpoint_history = self.sys.trace_pend_endpoint_history(self.history)
+        xlims = (np.min(endpoint_history[["base_x","tip_x"]]),
+                 np.max(endpoint_history[["base_x","tip_x"]]))
+        ylims = (np.min(endpoint_history[["base_y","tip_y"]]),
+                 np.max(endpoint_history[["base_y","tip_y"]]))
         # Add margin and make sure origin is in view
         margin = 0.5 * ureg.meter
         xlims = [min(0, xlims[0]) - margin, max(0, xlims[1]) + margin]
@@ -100,9 +102,10 @@ class SimAnimator:
 
     # Updates the graph
     def update(self, frame: float) -> tuple[Rectangle, plt.Line2D, plt.Text, plt.Text]:
-        state = State.from_vector(self.state_history[:, frame])
-        u = self.input_history[frame] * ureg.newton
         time = self.times[frame]
+        sim_info = self.history.loc[time].to_dict()
+        u = sim_info.pop("input")
+        state = State(**sim_info)
 
         # Updating the simulation objects
         artists = tuple(obj.update(state, time, u=u) for obj in self.objects)

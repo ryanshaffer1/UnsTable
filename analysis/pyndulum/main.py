@@ -114,7 +114,6 @@ def main(parameter_file: Path) -> None:
     # Run the simulation
     logger.info("Running simulation...")
     states, inputs = sim.run(times, show_progress=flags.get("show_progress", True))
-    histories = {"states": states, "inputs": inputs} # TODO: replace with output_df
 
     # Build output dataframe and record output metrics
     output_df = pd.concat((State.history_to_dataframe(states, times),
@@ -124,7 +123,7 @@ def main(parameter_file: Path) -> None:
 
 
     # Create the animator and show the animation
-    animator = SimAnimator(system, times, histories, show_progress=flags.get("show_progress", True))
+    animator = SimAnimator(system, times, output_df, show_progress=flags.get("show_progress", True))
 
     if flags.get("save_animation", False):
         logger.info("Saving animation...")
@@ -144,6 +143,7 @@ if __name__ == "__main__":
     profiling = "--profile" in sys.argv[1:]
 
     if profiling:
+        sys.argv.remove("--profile")
         profiler = cProfile.Profile()
         profiler.enable()
 
