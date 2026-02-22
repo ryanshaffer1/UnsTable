@@ -18,9 +18,13 @@ initial_state: !State
   theta: !unit 0 degree
   omega: !unit 0 degree/second
 
+disturbances: !GaussianDisturbance
+  mean: !array [0, 0, 0, 0]
+  std_dev: !array [0, 0.02, 0, 0.02]
+
 times: !unit [!range [0, 10, 0.001], second]
 
 flags:
   show_progress: True
-  save_animation: True
+  save_animation: False
   show_animation: True

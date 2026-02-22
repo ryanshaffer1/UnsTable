@@ -2,12 +2,13 @@ import numpy as np
 import yaml
 from pint import Quantity
 
-from src import controllers, dynamics, integrators, primitives, system, ureg
+from src import controllers, disturbances, dynamics, integrators, primitives, system, ureg
 
 # Following classes use generic "constructor" function (best suited for dataclasses)
 constructable_classes = {
     "ConstantController": controllers.ConstantController,
     "LQRController": controllers.LQRController,
+    "GaussianDisturbance": disturbances.GaussianDisturbance,
     "BasicDynamics": dynamics.BasicDynamics,
     "RK4Integrator": integrators.RK4Integrator,
     "State": primitives.State,

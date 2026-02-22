@@ -23,8 +23,8 @@ class State:
         df = pd.DataFrame(index=PintArray(times, dtype=times.units),
                             data={name: PintArray(data, dtype=units)
                              for (data, name, units) in zip(history,
-                                                            cls.__get_variable_names(),
-                                                            cls.__get_pandas_dtypes(),
+                                                            cls.get_variable_names(),
+                                                            cls.get_pandas_dtypes(),
                                                             strict=True,
                                                             )})
         # Convert to display units (if different from base units)
@@ -47,7 +47,7 @@ class State:
 
     def to_display_units(self) -> dict[str, Quantity]:
         return {name: getattr(self, name).to(display_units)
-                for (name, display_units) in zip(self.__get_variable_names(),
+                for (name, display_units) in zip(self.get_variable_names(),
                                                  self.get_display_units(),
                                                  strict=True)}
 
@@ -100,11 +100,11 @@ class State:
         return x, vx, theta, omega
 
     @classmethod
-    def __get_variable_names(cls) -> tuple[str]:
+    def get_variable_names(cls) -> tuple[str]:
         return ("x", "vx", "theta", "omega")
 
     @classmethod
-    def __get_pandas_dtypes(cls) -> tuple[str]:
+    def get_pandas_dtypes(cls) -> tuple[str]:
         return "pint[m]", "pint[m/s]", "pint[rad]", "pint[rad/s]"
 
 @dataclass
@@ -115,9 +115,9 @@ class Input:
     def history_to_dataframe(cls, history: np.ndarray, times: Quantity) -> pd.DataFrame:
         # Create dataframe with PintArray column for input history
         df = pd.DataFrame(index=PintArray(times, dtype=times.units),
-                            data={"input": PintArray(history, dtype=ureg.newton)})
+                            data={"u": PintArray(history, dtype=ureg.newton)})
         # Convert to display units (if different from base units)
-        df["input"] = df["input"].pint.to(ureg.newton)
+        df["u"] = df["u"].pint.to(ureg.newton)
         return df
 
 

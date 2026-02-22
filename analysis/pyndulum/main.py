@@ -15,6 +15,7 @@ from tqdm import tqdm
 from src import ureg
 from src.animation import SimAnimator
 from src.controllers import AbstractController
+from src.disturbances import Disturbance, GaussianDisturbance
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
 from src.outputs import record_outputs
@@ -33,6 +34,7 @@ class Simulation:
     state: State
     dynamics: BasicDynamics = field(default_factory=BasicDynamics)
     integrator: Integrator = field(default_factory=RK4Integrator)
+    disturbances: Disturbance = field(default_factory=GaussianDisturbance)
     time: Quantity = 0.0 * ureg.second
 
     def __post_init__(self) -> None:
@@ -47,6 +49,7 @@ class Simulation:
         # Initialize output storage
         states = np.ndarray([4, len(times)], dtype=float)
         inputs = np.ndarray([len(times)], dtype=float)
+        disturbances = np.ndarray([4, len(times)], dtype=float)
 
         # Initialize control input at zero
         self.u = 0 * ureg.newton
@@ -66,8 +69,9 @@ class Simulation:
             # Add time step to state history and input history
             states[:,i] = self.state.to_vector()
             inputs[i] = self.u.to_base_units().magnitude
+            disturbances[:,i] = self.dist
 
-        return states, inputs
+        return states, inputs, disturbances
 
     def update(self, time: Quantity) -> None:
         # Update sim time and track time step
@@ -90,6 +94,10 @@ class Simulation:
                                           self.system,
                                           self.u)
 
+        # Add disturbances to the state
+        self.dist = self.disturbances.apply(self.state, time)
+        self.state = self.state.add_vector(self.dist)
+
 def main(parameter_file: Path) -> None:
     add_yaml_constructors()
 
@@ -109,15 +117,17 @@ def main(parameter_file: Path) -> None:
                      state=init_state,
                      dynamics=params.get("dynamics"),
                      integrator=params.get("integrator"),
+                     disturbances=params.get("disturbances"),
                      )
 
     # Run the simulation
     logger.info("Running simulation...")
-    states, inputs = sim.run(times, show_progress=flags.get("show_progress", True))
+    states, inputs, disturbances = sim.run(times, show_progress=flags.get("show_progress", True))
 
     # Build output dataframe and record output metrics
     output_df = pd.concat((State.history_to_dataframe(states, times),
-                           Input.history_to_dataframe(inputs, times)),
+                           Input.history_to_dataframe(inputs, times),
+                           Disturbance.history_to_dataframe(disturbances, times)),
                           axis=1)
     record_outputs(output_df, step_variable="vx")
 

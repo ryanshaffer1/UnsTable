@@ -12,6 +12,43 @@ from src.primitives import State
 from src.system import System
 
 
+def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objects.AnimObject]:
+    # Add animated objects and labels
+    cart_anim = objects.AnimRectangle(sys.cart, ax, color="gray")
+    pend_base_anim = objects.AnimLine(sys.pendulum, ax,
+                                        lw=max(1, sys.pendulum.thickness.magnitude),
+                                        color="brown")
+    pend_top_anim = objects.OffsetAnimLine(pend_base_anim, ax,
+                                           offset=("end",0*ureg.meter,0*ureg.meter,90*ureg.degree),
+                                           length=sys.pendulum.length, # TODO make this variable
+                                           lw=max(1, sys.pendulum.thickness.magnitude),
+                                           color="saddlebrown")
+    time_text_anim = objects.AnimText("Time: {time:.2f~P}", ax, x=0.02, y=0.02,
+                                      bbox=textbox_format, transform=ax.transAxes,
+                                      ha="left")
+    state_text_anim = objects.AnimText(("x={x:.2f~P}\n"
+                                        r"$v_x$={vx:.2f~P}" + "\n"
+                                        r"$\theta$={theta:.2f~P}" + "\n"
+                                        r"$\omega$={omega:.2f~P}" + "\n"
+                                        r"u={u:.2f~P}"),
+                                        ax, x=0.98, y=0.02, bbox=textbox_format,
+                                        transform=ax.transAxes, ha="right")
+    dist_text_anim = objects.AnimText((r"$w_x$={w_x:.2f~P}" + "\n"
+                                       r"$w_v$={w_vx:.2f~P}" + "\n"
+                                       r"$w_\theta$={w_theta:.2f~P}" + "\n"
+                                       r"$w_\omega$={w_omega:.2f~P}"),
+                                       ax, x=0.98, y=0.98, bbox=textbox_format,
+                                       transform=ax.transAxes, ha="right", va="top")
+
+    sim_objects = [cart_anim,
+               pend_base_anim,
+               pend_top_anim,
+               time_text_anim,
+               state_text_anim,
+               dist_text_anim,
+               ]
+    return sim_objects
+
 class SimAnimator:
     def __init__(self,
                  system: System,
@@ -28,24 +65,7 @@ class SimAnimator:
         self.refresh_rate = refresh_rate
         self.format_plot()
 
-        # Add animated objects and labels
-        cart_anim = objects.AnimRectangle(self.sys.cart, self.ax, color="gray")
-        pend_base_anim = objects.AnimLine(self.sys.pendulum, self.ax,
-                                          lw=max(1,self.sys.pendulum.thickness.magnitude),
-                                          color="brown")
-        pend_top_anim = objects.OffsetAnimLine(pend_base_anim, self.ax,
-                                               offset=("end", 0*ureg.meter, 0*ureg.meter, 90*ureg.degree),
-                                               length=self.sys.pendulum.length, # TODO make this variable
-                                               lw=max(1,self.sys.pendulum.thickness.magnitude),
-                                               color="saddlebrown")
-        time_text_anim = objects.AnimText("Time: {time:.2f~P}", self.ax, x=0.02, y=0.02,
-                                          bbox=self.textbox_format, transform=self.ax.transAxes,
-                                          ha="left")
-        state_text_anim = objects.AnimText("x={x:.2f~P}\n"+r"$v_x$={vx:.2f~P}"+"\n"+r"$\theta$={theta:.2f~P}"+"\n"+r"$\omega$={omega:.2f~P}"+"\n"+r"u={u:.2f~P}",
-                                           self.ax, x=0.98, y=0.02, bbox=self.textbox_format,
-                                           transform=self.ax.transAxes, ha="right")
-
-        self.objects = [cart_anim, pend_base_anim, pend_top_anim, time_text_anim, state_text_anim]
+        self.objects = basic_objects(self.ax, self.sys, self.textbox_format)
 
         # Calculate frames to control animation refresh rate
         sim_time_step = times[1] - times[0]
@@ -104,11 +124,11 @@ class SimAnimator:
     def update(self, frame: float) -> tuple[Rectangle, plt.Line2D, plt.Text, plt.Text]:
         time = self.times[frame]
         sim_info = self.history.loc[time].to_dict()
-        u = sim_info.pop("input")
-        state = State(**sim_info)
+        state_dict = {var: sim_info.pop(var) for var in State.get_variable_names()}
+        state = State(**state_dict)
 
         # Updating the simulation objects
-        artists = tuple(obj.update(state, time, u=u) for obj in self.objects)
+        artists = tuple(obj.update(state, time, **sim_info) for obj in self.objects)
         return artists
 
     def show(self) -> None:
