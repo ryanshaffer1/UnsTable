@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from src.primitives import State
+from src.variables import State
 
 
 class Integrator(ABC):

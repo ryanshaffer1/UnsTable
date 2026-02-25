@@ -5,7 +5,7 @@ from scipy.linalg import solve_continuous_are
 from src import ureg
 from src.controllers.abstract_controller import AbstractController
 from src.dynamics import LinearizedModel
-from src.primitives import State
+from src.variables import State
 from src.system import System
 
 

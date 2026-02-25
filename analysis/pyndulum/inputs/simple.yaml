@@ -4,7 +4,8 @@ system: &sys !System
     refresh_rate: !unit 20 hertz
     command_lag: !unit 2 millisecond
   cart: !Cart {}
-  pendulum: !Pendulum {}
+  pendulum: !TablePend {
+  }
 
 controller: !LQRController
   Q:  !array [[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]
@@ -20,11 +21,12 @@ initial_state: !State
 
 disturbances: !GaussianDisturbance
   mean: !array [0, 0, 0, 0]
-  std_dev: !array [0, 0.02, 0, 0.02]
+  std_dev: !array [0, 0.0, 0, 0.0]
 
 times: !unit [!range [0, 10, 0.001], second]
 
-flags:
+settings:
+  random_seed: 42
   show_progress: True
   save_animation: False
   show_animation: True

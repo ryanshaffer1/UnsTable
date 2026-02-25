@@ -15,13 +15,12 @@ from tqdm import tqdm
 from src import ureg
 from src.animation import SimAnimator
 from src.controllers import AbstractController
-from src.disturbances import Disturbance, GaussianDisturbance
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
 from src.outputs import record_outputs
-from src.primitives import Input, State
 from src.system import System
 from src.utils import LOGGING_CONFIG, add_yaml_constructors
+from src.variables import Disturbance, GaussianDisturbance, Input, State
 
 # Set up logger
 logging.config.dictConfig(LOGGING_CONFIG)
@@ -36,6 +35,7 @@ class Simulation:
     integrator: Integrator = field(default_factory=RK4Integrator)
     disturbances: Disturbance = field(default_factory=GaussianDisturbance)
     time: Quantity = 0.0 * ureg.second
+    rng: np.random.Generator = field(default_factory=lambda: np.random.default_rng(seed=42))
 
     def __post_init__(self) -> None:
         # Iterate over all defined fields in the dataclass
@@ -95,7 +95,7 @@ class Simulation:
                                           self.u)
 
         # Add disturbances to the state
-        self.dist = self.disturbances.apply(self.state, time)
+        self.dist = self.disturbances.apply(self.state, time, self.rng)
         self.state = self.state.add_vector(self.dist)
 
 def main(parameter_file: Path) -> None:
@@ -109,7 +109,10 @@ def main(parameter_file: Path) -> None:
     controller = params["controller"]
     init_state = params["initial_state"]
     times = params["times"]
-    flags = params.get("flags", {})
+    settings = params.get("settings", {})
+
+    # Set random seed
+    rng = np.random.default_rng(settings.get("random_seed", 42))
 
     # Initialize simulation
     sim = Simulation(system=system,
@@ -118,11 +121,12 @@ def main(parameter_file: Path) -> None:
                      dynamics=params.get("dynamics"),
                      integrator=params.get("integrator"),
                      disturbances=params.get("disturbances"),
+                     rng=rng,
                      )
 
     # Run the simulation
     logger.info("Running simulation...")
-    states, inputs, disturbances = sim.run(times, show_progress=flags.get("show_progress", True))
+    states, inputs, disturbances = sim.run(times, show_progress=settings.get("show_progress", True))
 
     # Build output dataframe and record output metrics
     output_df = pd.concat((State.history_to_dataframe(states, times),
@@ -133,13 +137,16 @@ def main(parameter_file: Path) -> None:
 
 
     # Create the animator and show the animation
-    animator = SimAnimator(system, times, output_df, show_progress=flags.get("show_progress", True))
+    animator = SimAnimator(system,
+                           times,
+                           output_df,
+                           show_progress=settings.get("show_progress", True))
 
-    if flags.get("save_animation", False):
+    if settings.get("save_animation", False):
         logger.info("Saving animation...")
         animator.save("pyndulum.gif")
 
-    if flags.get("show_animation", True):
+    if settings.get("show_animation", True):
         logger.info("Showing animation...")
         animator.show()
 

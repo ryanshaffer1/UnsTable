@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src import ureg
 from src.animation import objects
-from src.primitives import State
+from src.variables import State
 from src.system import System
 
 
@@ -16,12 +16,12 @@ def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objec
     # Add animated objects and labels
     cart_anim = objects.AnimRectangle(sys.cart, ax, color="gray")
     pend_base_anim = objects.AnimLine(sys.pendulum, ax,
-                                        lw=max(1, sys.pendulum.thickness.magnitude),
+                                        lw=max(1, sys.pendulum.rod.thickness.magnitude),
                                         color="brown")
     pend_top_anim = objects.OffsetAnimLine(pend_base_anim, ax,
                                            offset=("end",0*ureg.meter,0*ureg.meter,90*ureg.degree),
-                                           length=sys.pendulum.length, # TODO make this variable
-                                           lw=max(1, sys.pendulum.thickness.magnitude),
+                                           length=sys.pendulum.rod.length, # TODO make this variable
+                                           lw=max(1, sys.pendulum.rod.thickness.magnitude),
                                            color="saddlebrown")
     time_text_anim = objects.AnimText("Time: {time:.2f~P}", ax, x=0.02, y=0.02,
                                       bbox=textbox_format, transform=ax.transAxes,

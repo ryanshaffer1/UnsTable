@@ -6,7 +6,8 @@ from matplotlib.patches import Rectangle
 from pint import Quantity
 
 from src import ureg
-from src.primitives import BeamPrim, BlockPrim, State
+from src.system import BeamPrim, BlockPrim
+from src.variables import State
 
 
 class AnimObject(ABC):

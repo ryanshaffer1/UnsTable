@@ -4,7 +4,7 @@ import numpy as np
 from pint import Quantity
 
 from src import ureg
-from src.primitives import State
+from src.variables import State
 from src.system import System
 
 

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from src.primitives import State
+from src.variables import State
 from src.system import System
 
 
