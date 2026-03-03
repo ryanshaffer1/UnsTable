@@ -1,10 +1,20 @@
 from dataclasses import dataclass, field
 
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import collections, patches
 from pint import Quantity
 
 from src import ureg
-from src.system import BeamPrim, BlockPrim, ObjectPrim
+from src.coords import CoordSystem, GlobalPoint, Point
+from src.system.primitives import (
+    Block,
+    BodyRefPoint,
+    Cylinder,
+    RigidBody,
+    RigidBodySystem,
+    Sphere,
+    )
 from src.variables import State
 
 
@@ -28,81 +38,90 @@ class Actuator:
         return (self.command_lag is None) or (time - lag_window_start >= self.command_lag)
 
 @dataclass
-class Cart(BlockPrim):
+class Cart(Block):
     mass: Quantity = 1 * ureg.kg
-    y_top: Quantity = 0 * ureg["inch"]
     width: Quantity = 8 * ureg["inch"]
     height: Quantity = 4 * ureg["inch"]
+    depth: Quantity = 8 * ureg["inch"]
+    origin_type: BodyRefPoint = BodyRefPoint.TOP_CENTER
+    body_frame: CoordSystem = field(default_factory=CoordSystem)
     friction_coeff: Quantity = 0.1 * ureg.newton * ureg.second / ureg.meter
 
     def __post_init__(self) -> None:
-        # Convert to base units
-        self.mass.ito_base_units()
-        self.y_top.ito_base_units()
-        self.width.ito_base_units()
-        self.height.ito_base_units()
+        super().__post_init__()
 
-    def get_mass(self) -> Quantity:
-        return self.mass
-
-    def get_ll_corner(self, state: State) -> tuple[float, float]:
-        return (state.x - self.width / 2, self.y_top - self.height)
+    def get_mpl_sprite(self, **kwargs: dict) -> patches.Rectangle:
+        return patches.Rectangle((0,0), self.width, self.height, **kwargs)
 
 @dataclass
-class Bob(ObjectPrim):
+class Bob(Sphere):
     mass: Quantity = 0 * ureg.kg  # Mass of pendulum bob (if separate from rod mass)
-    moi: Quantity = 0 * ureg.kg * ureg.meter**2  # Pendulum bob MOI about its center of mass
-    cg_tip_offset_x: Quantity = 0 * ureg.meter  # Distance from pendulum tip to bob center of mass
-    cg_tip_offset_y: Quantity = 0 * ureg.meter  # Distance from pendulum tip to bob center of mass
-
-    def moi_through_pivot(self, rod_length: Quantity) -> Quantity:
-        dist_pivot_to_cg = np.sqrt(self.cg_tip_offset_x**2 + (rod_length + self.cg_tip_offset_y)**2)
-        return self.moi + self.parallel_axis_term(dist_pivot_to_cg)
-
-@dataclass
-class Rod(BeamPrim):
-    mass: Quantity = 2 * ureg.kg
-    length: Quantity = 24 * ureg.inch
-    thickness: Quantity = 3 * ureg.inch
+    radius: Quantity = 2 * ureg.inches
+    body_frame: CoordSystem = field(default_factory=CoordSystem)
+    origin_type: BodyRefPoint = BodyRefPoint.BOTTOM_CENTER
 
     def __post_init__(self) -> None:
-        # Convert to base units
-        self.mass.ito_base_units()
-        self.length.ito_base_units()
-        self.thickness.ito_base_units()
+        super().__post_init__()
+        self.body_frame.set_rotations((("Y", "theta"),)) # TODO make this happen in the Pendulum
 
-    def get_mass(self) -> Quantity:
-        return self.mass
+    def get_mpl_sprite(self, **kwargs: dict) -> patches.Circle:
+        return patches.Circle((0,0), self.radius, **kwargs)
+
+@dataclass
+class Rod(Cylinder):
+    mass: Quantity = 2 * ureg.kg
+    length: Quantity = 24 * ureg.inch
+    radius: Quantity = 1 * ureg.inch
+    origin_type: BodyRefPoint = BodyRefPoint.BOTTOM_CENTER
+    body_frame: CoordSystem = field(default_factory=CoordSystem)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.body_frame.set_rotations((("Y", "theta"),)) # TODO make this happen in the Pendulum
 
     @ureg.wraps(("meter", "meter"), (None, "meter", "radian"), strict=False)
     def get_endpoints(self, x: float, theta: float,
                       ) -> tuple[tuple[float, float], tuple[float, float]]:
+        # TODO: rewrite using primitives
         bob_x = x + self.length.magnitude * np.sin(theta)
         bob_y = self.length.magnitude * np.cos(theta)
         return (x, 0), (bob_x, bob_y)
 
+    def get_mpl_sprite(self, **kwargs: dict) -> patches.Rectangle:
+        return patches.Rectangle((0,0), 2*self.radius, self.length, **kwargs)
 
 @dataclass
-class Pendulum:
-    y_pivot: Quantity = 0 * ureg["inch"] # Height of pendulum pivot point (relative to ground)
-    moi: Quantity | None = None  # Moment of inertia about pivot point
-    centroid: tuple[Quantity, Quantity] | None = None  # Distance from pivot to center of mass
+class Pendulum(RigidBodySystem):
+    pivot_point: Point | None = None
     rod: Rod = field(default_factory=Rod)
     bob: Bob = field(default_factory=Bob)
+    # bob: Bob | None = None
+    bodies: list[RigidBody] = field(init=False)
+    body_frame: CoordSystem = field(default_factory=CoordSystem)
+    origin_type: None = None
 
     def __post_init__(self) -> None:
-        self.mass = self.rod.mass + self.bob.mass
+        # Set up sub-bodies and link their body frames
+        self.bodies = [self.rod]
+        if self.bob is not None:
+            self.bodies.append(self.bob)
+            self.bob.body_frame.set_origin_point(self.rod.get_point(BodyRefPoint.TOP_CENTER,
+                                                                    cs_type="body"))
+        for body in self.bodies:
+            body.parent_frame = self.body_frame
 
-        # Convert to base units
-        self.y_pivot.ito_base_units()
+        # Get pivot point from CS origin
+        if self.pivot_point is None:
+            self.pivot_point = self.body_frame.get_framed_point()
 
-        # Calculate distance from pivot to center of mass if not provided
-        if self.centroid is None:
-            self.centroid = self.get_centroid_offsets()
+        # Caclulate mass properties
+        self.mass = self.get_mass()
+        self.centroid = self.get_centroid()
+        self.moi = self.get_moi_matrix(self.pivot_point)
 
-        # Calculate moment of inertia about pivot point if not provided
-        if self.moi is None:
-            self.moi = self.get_moi_about_pivot()
+    def set_pivot_point(self, pivot_point: Point) -> None:
+        self.pivot_point = pivot_point
+        self.moi = self.get_moi_matrix(self.pivot_point)
 
     def get_endpoints(self,
                       x: Quantity,
@@ -110,20 +129,12 @@ class Pendulum:
                       ) -> tuple[tuple[Quantity, Quantity], tuple[Quantity, Quantity]]:
         # Get rod endpoints
         rod_start, rod_end = self.rod.get_endpoints(x, theta)
-        # Add y_pivot offset to both endpoints
-        rod_start = (rod_start[0], rod_start[1] + self.y_pivot)
-        rod_end = (rod_end[0], rod_end[1] + self.y_pivot)
+        # Add pivot point offset to both endpoints
+        rod_start = (rod_start[0], rod_start[1] + self.pivot_point.y)
+        rod_end = (rod_end[0], rod_end[1] + self.pivot_point.y)
 
         return rod_start, rod_end
 
-    def get_centroid_offsets(self) -> tuple[Quantity, Quantity]:
-        bob_centroid = [self.bob.cg_tip_offset_x, self.rod.length + self.bob.cg_tip_offset_y]
-        rod_centroid = self.rod.get_centroid_offset()
-
-        offset_x = (self.bob.mass * bob_centroid[0] + self.rod.mass * rod_centroid[0]) / self.mass
-        offset_y = (self.bob.mass * bob_centroid[1] + self.rod.mass * rod_centroid[1]) / self.mass
-        return (offset_x, offset_y)
-
-    def get_moi_about_pivot(self) -> Quantity:
-        # Total moment of inertia
-        return self.rod.moi_through_endpoint() + self.bob.moi_through_pivot(self.rod.length)
+    def get_mpl_sprite(self, **kwargs: dict) -> list[patches.Patch]:
+        patches = [body.get_mpl_sprite(**kwargs) for body in self.bodies]
+        return patches

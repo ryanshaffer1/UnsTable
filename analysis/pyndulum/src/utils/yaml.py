@@ -17,8 +17,6 @@ constructable_classes = {
     "Pendulum": system.Pendulum,
     "Bob": system.Bob,
     "Rod": system.Rod,
-    "TablePend": system.TablePend,
-    "TableTop": system.TableTop,
     "System": system.System,
     # Add other classes as needed
 }

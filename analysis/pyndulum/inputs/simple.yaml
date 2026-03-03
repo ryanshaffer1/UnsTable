@@ -1,11 +1,10 @@
 system: &sys !System
   actuator: !Actuator
     force_limit: !unit 50 newton
-    refresh_rate: !unit 20 hertz
+    refresh_rate: !unit 10 hertz
     command_lag: !unit 2 millisecond
   cart: !Cart {}
-  pendulum: !TablePend {
-  }
+  pendulum: !Pendulum {}
 
 controller: !LQRController
   Q:  !array [[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]
@@ -23,7 +22,7 @@ disturbances: !GaussianDisturbance
   mean: !array [0, 0, 0, 0]
   std_dev: !array [0, 0.0, 0, 0.0]
 
-times: !unit [!range [0, 10, 0.001], second]
+times: !unit [!range [0, 10, 0.02], second]
 
 settings:
   random_seed: 42

@@ -8,21 +8,14 @@ from tqdm import tqdm
 
 from src import ureg
 from src.animation import objects
-from src.variables import State
 from src.system import System
+from src.variables import State
 
 
 def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objects.AnimObject]:
     # Add animated objects and labels
     cart_anim = objects.AnimRectangle(sys.cart, ax, color="gray")
-    pend_base_anim = objects.AnimLine(sys.pendulum, ax,
-                                        lw=max(1, sys.pendulum.rod.thickness.magnitude),
-                                        color="brown")
-    pend_top_anim = objects.OffsetAnimLine(pend_base_anim, ax,
-                                           offset=("end",0*ureg.meter,0*ureg.meter,90*ureg.degree),
-                                           length=sys.pendulum.rod.length, # TODO make this variable
-                                           lw=max(1, sys.pendulum.rod.thickness.magnitude),
-                                           color="saddlebrown")
+    pend_anim = objects.AnimCollection(sys.pendulum, ax, color="saddlebrown")
     time_text_anim = objects.AnimText("Time: {time:.2f~P}", ax, x=0.02, y=0.02,
                                       bbox=textbox_format, transform=ax.transAxes,
                                       ha="left")
@@ -41,12 +34,11 @@ def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objec
                                        transform=ax.transAxes, ha="right", va="top")
 
     sim_objects = [cart_anim,
-               pend_base_anim,
-               pend_top_anim,
-               time_text_anim,
-               state_text_anim,
-               dist_text_anim,
-               ]
+                   *pend_anim.patches,
+                   time_text_anim,
+                   state_text_anim,
+                   dist_text_anim,
+                   ]
     return sim_objects
 
 class SimAnimator:

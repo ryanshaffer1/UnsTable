@@ -5,6 +5,7 @@ from pint import Quantity
 
 from src import ureg
 from src.system import Actuator, Cart, Pendulum
+from src.system.primitives import BodyRefPoint
 
 
 @dataclass
@@ -16,18 +17,19 @@ class System:
 
     def __post_init__(self) -> None:
         # Totals
-        self.total_mass = self.cart.mass + self.pendulum.mass
+        self.total_mass = self.cart.mass + self.pendulum.get_mass()
 
         # Configure geometry parameters dependent on other components
-        self.pendulum.y_pivot = self.cart.y_top
+        pivot_point = self.cart.get_point(BodyRefPoint.TOP_CENTER, cs_type="body")
+        self.pendulum.set_pivot_point(pivot_point)
 
         # Set variables used in dynamics calculations
         self.b = self.cart.friction_coeff
         self.g = self.gravity
-        self.moi_pend = self.pendulum.moi
+        self.moi_pend = self.pendulum.moi[1][1] # Y-axis MOI
         self.m_cart = self.cart.mass
         self.m_pend = self.pendulum.mass
-        self.l_com = self.pendulum.centroid[1]
+        self.l_com = self.pendulum.centroid.z
 
 
     def trace_pend_endpoint_history(self, history: pd.DataFrame) -> pd.DataFrame:
