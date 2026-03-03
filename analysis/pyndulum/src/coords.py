@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Self
+from typing import Optional, Self
 
 import numpy as np
 from pint import Quantity
@@ -7,194 +7,169 @@ from pint import Quantity
 from src import ureg
 
 
+def _to_base_magnitudes(x: Quantity, y: Quantity, z: Quantity) -> tuple[np.ndarray, Quantity]:
+    """Return a numpy array of magnitudes in base units and the units used."""
+    x.ito_base_units()
+    y.ito_base_units()
+    z.ito_base_units()
+    units = x.units
+    return np.array([x.magnitude, y.magnitude, z.magnitude]), units
+
+def _from_magnitude_array(arr: np.ndarray, units: Quantity) -> tuple[Quantity]:
+    """Return a tuple of quantities from the array and units to be applied."""
+    return tuple(v * units for v in arr)
+
+
+@dataclass
 class GlobalPoint:
-    def __init__(self,
-                 x: Quantity=0*ureg.meter,
-                 y: Quantity=0*ureg.meter,
-                 z: Quantity=0*ureg.meter) -> None:
-        self.x = x
-        self.y = y
-        self.z = z
+    """Absolute point in the global coordinate system (with units).
 
-        # Convert to base units
-        self.x.ito_base_units()
-        self.y.ito_base_units()
-        self.z.ito_base_units()
-
-    def add_offset(self, offset: tuple[Quantity, Quantity, Quantity]) -> Self:
-        return GlobalPoint(x=self.x + offset[0],
-                           y=self.y + offset[1],
-                           z=self.z + offset[2])
-
-    def vector_to(self, other: Self) -> np.ndarray:
-        return np.array([(other.x - self.x).magnitude,
-                         (other.y - self.y).magnitude,
-                         (other.z - self.z).magnitude]) * self.x.units
-
-    def vector_from(self, other: Self) -> np.ndarray:
-        return np.array([(self.x - other.x).magnitude,
-                         (self.y - other.y).magnitude,
-                         (self.z - other.z).magnitude]) * self.x.units
-
-# Instantiate a global origin point for use as a default reference
-global_origin = GlobalPoint(0 * ureg.meter, 0 * ureg.meter, 0 * ureg.meter)
-
-class GlobalCoordSystem:
-    origin = global_origin
-
-# Instantiate a global coordinate system for use as a default reference
-global_coords = GlobalCoordSystem()
-
-@dataclass
-class CoordSystem:
-    # All relative to "global" coordinate system
-    origin: GlobalPoint = field(default_factory=GlobalPoint)
-    rotations: tuple[tuple[str, str]] | None = None
-    init_dcm: np.ndarray | None = None
-    dcm: np.ndarray = field(init=False)
-    rotation_angles: list[list[str, Quantity]] = field(init=False)
-
-    def __post_init__(self) -> None:
-        if self.init_dcm is None:
-            self.init_dcm = np.identity(3)
-        self.dcm = self.init_dcm
-        self.set_rotations(self.rotations)
-
-    def set_rotations(self, rotations: tuple[tuple[str, str]]) -> None:
-        self.rotations = rotations
-        if self.rotations is None:
-            self.rotation_angles = None
-            return
-        self.rotation_angles = []
-        for rot in self.rotations:
-            axis, _ = rot
-            self.rotation_angles.append([axis, 0]) # TODO for frames with initial rotationss
-
-    def get_framed_point(self) -> "Point":
-        return Point(frame=self,
-                     x=self.origin.x,
-                     y=self.origin.y,
-                     z=self.origin.z)
-
-    def set_origin_point(self, point: GlobalPoint) -> None:
-        if isinstance(point, Point):
-            self.origin = point.to_global()
-        else:
-            self.origin = point
-
-    def translate(self,
-                  x_dist: Quantity = 0*ureg.meter,
-                  y_dist: Quantity = 0*ureg.meter,
-                  z_dist: Quantity = 0*ureg.meter) -> None:
-        self.origin = self.origin.add_offset((x_dist, y_dist, z_dist))
-
-    def translate_to(self,
-                     x_pos: Quantity | None = None,
-                     y_pos: Quantity | None = None,
-                     z_pos: Quantity | None = None) -> None:
-        # Handle missing position inputs: maintain current value
-        curr_origin = self.get_framed_point()
-        if x_pos is None:
-            x_pos = curr_origin.x
-        if y_pos is None:
-            y_pos = curr_origin.y
-        if z_pos is None:
-            z_pos = curr_origin.z
-
-        self.set_origin_point(GlobalPoint(x_pos, y_pos, z_pos))
-
-    def align(self, other: Self) -> None:
-        self.dcm = other.dcm
-
-    def rotate(self, angles: dict[str, float]) -> None:
-        # Check if coordinate frame can be rotated
-        if self.rotations is None:
-            return
-        # Iterate through elementary rotations (about CS axes)
-        for rot, rot_angle in zip(self.rotations, self.rotation_angles, strict=True):
-            # Get the axis to rotate about and the rotation angle (if provided)
-            _, angle_name = rot
-            angle = angles.get(angle_name, 0)
-            # Add to the frame's rotation angles
-            rot_angle[1] = angle
-
-        # Build the rotation matrix for the combination rotation
-        rotation_matrix = build_rotation_matrix(self.rotation_angles)
-        # Apply the rotation matrix
-        self.dcm = rotation_matrix @ self.dcm
-
-    def rotate_to(self, angles: dict[str, float]) -> None:
-        # First reset the DCM
-        self.dcm = self.init_dcm
-        # Then apply the rotation
-        self.rotate(angles)
-
-    def rotate_point_to(self,
-                        point: GlobalPoint,
-                        angles: dict[str, float],
-                        pivot_point: GlobalPoint) -> GlobalPoint:
-        self.rotate_to(angles)
-        offset_from_pivot = point.vector_from(pivot_point)
-        rotated_offset = self.dcm @ offset_from_pivot
-        return pivot_point.add_offset(rotated_offset)
-
-@dataclass
-class Point:
-    frame: CoordSystem
+    Use this when you need an origin or a location expressed in the global
+    frame. For local/frame-relative points, use `Point`.
+    """
     x: Quantity = 0 * ureg.meter
     y: Quantity = 0 * ureg.meter
     z: Quantity = 0 * ureg.meter
 
-    def __post_init__(self) -> None:
-        # Convert to base units
-        self.x.ito_base_units()
-        self.y.ito_base_units()
-        self.z.ito_base_units()
-
     def add_offset(self, offset: tuple[Quantity, Quantity, Quantity]) -> Self:
-        return Point(frame=self.frame,
-                   x=self.x + offset[0],
-                   y=self.y + offset[1],
-                   z=self.z + offset[2])
+        return GlobalPoint(x=self.x + offset[0], y=self.y + offset[1], z=self.z + offset[2])
 
-    def to_global(self) -> GlobalPoint:
-        # WRONG
-        return GlobalPoint(x = self.x, y = self.y, z = self.z)
+    def to_array(self) -> tuple[np.ndarray, Quantity]:
+        arr, units = _to_base_magnitudes(self.x, self.y, self.z)
+        return arr, units
 
     def vector_to(self, other: Self) -> np.ndarray:
-        if self.frame != other.frame:
-            msg = "Vector between two points in different frames not supported."
+        arr, units = _to_base_magnitudes(other.x - self.x, other.y - self.y, other.z - self.z)
+        return arr * units
+
+    def copy(self) -> Self:
+        return GlobalPoint(x=self.x, y=self.x, z=self.z)
+
+@dataclass
+class CoordFrame:
+    """A coordinate frame defined by an origin (GlobalPoint) and a rotation
+    matrix that maps frame vectors to global vectors:
+
+        v_global = dcm @ v_frame
+
+    Methods allow translating/rotating the frame and converting points
+    between frames.
+    """
+    origin: GlobalPoint = field(default_factory=lambda: GlobalPoint(0 * ureg.meter,
+                                                                    0 * ureg.meter,
+                                                                    0 * ureg.meter))
+    dcm: np.ndarray = field(default_factory=lambda: np.identity(3))
+    init_origin: GlobalPoint = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.init_origin = self.origin.copy()
+
+    def translate(self,
+                  dx: Quantity = 0 * ureg.meter,
+                  dy: Quantity = 0 * ureg.meter,
+                  dz: Quantity = 0 * ureg.meter) -> None:
+        # Offset is in local coordinates - transform to global
+        local_offset, units = _to_base_magnitudes(dx, dy, dz)
+        global_offset = _from_magnitude_array(self.rotate_vector(local_offset), units)
+
+        # Add global offset to origin
+        self.origin = self.origin.add_offset(global_offset)
+
+    def translate_to(self,
+                     x: Quantity | None = None,
+                     y: Quantity | None = None,
+                     z: Quantity | None = None,
+                     *args: list,
+                     point: GlobalPoint | None = None) -> None:
+        if point:
+            self.origin = point
+        else:
+            if x is None:
+                x = self.init_origin.x
+            if y is None:
+                y = self.init_origin.y
+            if z is None:
+                z = self.init_origin.z
+            self.origin = GlobalPoint(x, y, z)
+
+    def set_init_origin(self, origin: GlobalPoint) -> None:
+        self.init_origin = origin.copy()
+
+    def reset_origin(self) -> None:
+        self.origin.x = self.init_origin.x
+        self.origin.y = self.init_origin.y
+        self.origin.z = self.init_origin.z
+
+    def set_rotation(self, dcm: np.ndarray) -> None:
+        self.dcm = np.array(dcm, dtype=float)
+
+    def rotate_vector(self, vector: np.ndarray) -> np.ndarray:
+        return self.dcm @ vector
+
+    def align_to(self, other: Self) -> None:
+        self.dcm = other.dcm.copy()
+
+    def get_frame_offset(self, other: Self) -> np.ndarray:
+        return self.origin.vector_to(other.origin)
+
+    def to_global(self, point: "Point") -> GlobalPoint:
+        """Convert a `Point` expressed in this frame to a `GlobalPoint`."""
+        vec, units = _to_base_magnitudes(point.x, point.y, point.z)
+        rotated = self.dcm @ vec
+        origin_arr, _ = self.origin.to_array()
+        result = rotated + origin_arr
+        return GlobalPoint(result[0] * units, result[1] * units, result[2] * units)
+
+    def from_global(self, gp: GlobalPoint) -> "Point":
+        """Convert a `GlobalPoint` into this frame's coordinates (returns `Point`)."""
+        g_arr, units = gp.to_array()
+        local = np.linalg.inv(self.dcm) @ (g_arr - self.origin.to_array()[0])
+        return Point(frame=self, x=local[0] * units, y=local[1] * units, z=local[2] * units)
+
+
+@dataclass
+class Point:
+    """A point expressed in a particular `CoordFrame`.
+
+    Use `to_global()` and `frame.to_global()` / `frame.from_global()` to convert
+    to/from `GlobalPoint` representations.
+    """
+    frame: CoordFrame
+    x: Quantity = 0 * ureg.meter
+    y: Quantity = 0 * ureg.meter
+    z: Quantity = 0 * ureg.meter
+
+    def add_offset(self, offset: tuple[Quantity, Quantity, Quantity]) -> Self:
+        return Point(frame=self.frame, x=self.x + offset[0], y=self.y + offset[1], z=self.z + offset[2])
+
+    def to_global(self) -> GlobalPoint:
+        return self.frame.to_global(self)
+
+    def as_array(self) -> tuple[np.ndarray, Quantity]:
+        return _to_base_magnitudes(self.x, self.y, self.z)
+
+    def vector_to(self, other: Self) -> np.ndarray:
+        if self.frame is not other.frame:
+            msg = "Vector between points in different frames: convert to a common frame first."
             raise ValueError(msg)
-        return np.array([(other.x - self.x).magnitude,
-                         (other.y - self.y).magnitude,
-                         (other.z - self.z).magnitude]) * self.x.units
+        arr, units = _to_base_magnitudes(other.x - self.x, other.y - self.y, other.z - self.z)
+        return arr * units
 
-    def vector_from(self, other: Self) -> np.ndarray:
-        if self.frame != other.frame:
-            msg = "Vector between two points in different frames not supported."
-            raise ValueError(msg)
-        return np.array([(self.x - other.x).magnitude,
-                         (self.y - other.y).magnitude,
-                         (self.z - other.z).magnitude]) * self.x.units
 
-def build_rotation_matrix(rotation_angles: list[list[str, float]]) -> np.ndarray:
-    total_rot_matrix = np.identity(3)
-    for rot in rotation_angles:
-        axis, angle = rot
+def rotation_matrix(axis: str, angle: Quantity) -> np.ndarray:
+    """Return a 3x3 rotation matrix about axis 'X','Y', or 'Z' by `angle` radians."""
+    a = angle.to(ureg.radians).magnitude
+    axis = axis.upper()
+    if axis == "X":
+        return np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+    if axis == "Y":
+        return np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+    if axis == "Z":
+        return np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+    msg = f"Unknown axis '{axis}' for rotation matrix"
+    raise ValueError(msg)
 
-        match axis.upper():
-            case "X":
-                rotation_matrix = np.array([[1, 0, 0],
-                                            [0, np.cos(angle), -np.sin(angle)],
-                                            [0, np.sin(angle), np.cos(angle)]])
-            case "Y":
-                rotation_matrix = np.array([[np.cos(angle), 0, np.sin(angle)],
-                                            [0, 1, 0],
-                                            [-np.sin(angle), 0, np.cos(angle)]])
-            case "Z":
-                rotation_matrix = np.array([[np.cos(angle), -np.sin(angle), 0],
-                                            [np.sin(angle), np.cos(angle), 0],
-                                            [0, 0, 1]])
+# Default global origin and frame
+global_origin = GlobalPoint(0 * ureg.meter, 0 * ureg.meter, 0 * ureg.meter)
+global_frame = CoordFrame(origin=global_origin, dcm=np.identity(3))
 
-        total_rot_matrix = rotation_matrix @ total_rot_matrix
-    return total_rot_matrix

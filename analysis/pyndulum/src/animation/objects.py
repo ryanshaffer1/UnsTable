@@ -6,7 +6,7 @@ from matplotlib.patches import Circle, Patch, Rectangle
 from pint import Quantity
 
 from src import ureg
-from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem, Sphere
+from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem, Rod, Sphere
 from src.variables import State
 
 

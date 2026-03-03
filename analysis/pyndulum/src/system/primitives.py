@@ -7,7 +7,7 @@ import numpy as np
 from pint import Quantity
 
 from src import ureg
-from src.coords import CoordSystem, Point
+from src.coords import CoordFrame, GlobalPoint, Point, rotation_matrix
 from src.variables import State
 
 
@@ -34,14 +34,18 @@ class BodyRefPoint(Enum):
 @dataclass(kw_only=True)
 class RigidBody(ABC):
     mass: Quantity
-    body_frame: CoordSystem
+    body_frame: CoordFrame
     origin_type: BodyRefPoint | None
-    parent_frame: CoordSystem | None = None
+    parent_frame: CoordFrame | None = None
+    rotations: dict[str, str] | None = None
     _dimensions: tuple = field(init=False)
+    _parent_offset: np.ndarray | None = field(init=False)
+    _rot_angle: Quantity = 0*ureg.degrees
 
     def __post_init__(self) -> None:
         # Convert to base units
         self.mass.ito_base_units()
+        self.set_parent_frame(self.parent_frame)
 
     def get_mass(self) -> Quantity:
         return self.mass
@@ -57,37 +61,64 @@ class RigidBody(ABC):
                                     zip(offset_to_origin_factors,
                                         self._dimensions,
                                         offset, strict=True))
+        # Create point in body frame with those distances
+        local_point = Point(self.body_frame, *offset_to_origin)
+
         if cs_type == "body":
-            # Create point in body frame with those distances
-            return Point(self.body_frame, *offset_to_origin)
+            return local_point
 
-        # To get global coordinates: rotate about pivot point, then add to the pivot's global coords
-        offset_array = (np.array([off.magnitude for off in offset_to_origin]) * offset[0].units).T
-        rotated_offset = self.body_frame.dcm @ offset_array
-        return self.body_frame.origin.add_offset(rotated_offset)
+        if cs_type in ("global", "world"):
+            # Convert the body-local point to a GlobalPoint
+            return self.body_frame.to_global(local_point)
+        msg = f"Unsupported cs_type '{cs_type}' for get_point"
+        raise ValueError(msg)
 
-    def get_centroid(self) -> Point:
+    def get_centroid(self) -> GlobalPoint:
+        """Return the centroid as a GlobalPoint (absolute coordinates)."""
         offset_factors = self.origin_type.offset_to_centroid()
-        offset = tuple(fac*dim for fac, dim in zip(offset_factors, self._dimensions, strict=True))
-        return self.body_frame.origin.add_offset(offset)
+        offset = tuple(fac * dim for fac, dim in zip(offset_factors, self._dimensions, strict=True))
+        return self.body_frame.to_global(Point(self.body_frame, *offset))
 
-    def update_frame(self, state: State) -> None:
-        self.body_frame.translate_to(x_pos=state.x)
+    def set_parent_frame(self, parent_frame: CoordFrame) -> None:
+        if parent_frame is not None:
+            self.parent_frame = parent_frame
+            self._parent_offset = self.parent_frame.get_frame_offset(self.body_frame)
+
+    def update_frame(self, state: State, pivot_point: GlobalPoint | None = None) -> None:
         if self.parent_frame:
-            # Align rotation with the parent frame, then add any applicable rotations from there
-            self.body_frame.align(self.parent_frame)
-            self.body_frame.rotate(angles={"theta": state.theta})
+            # Set origin to parent origin
+            self.body_frame.translate_to(point=self.parent_frame.origin)
+            # Align frame rotations
+            self.body_frame.align_to(self.parent_frame)
+            # Apply offset to get new origin
+            self.body_frame.translate(*self._parent_offset)
+
         else:
-            # Rotate to the angles present in the state
-            self.body_frame.rotate_to(angles={"theta": state.theta})
+            # Translate frame origin to state's x (preserve other coordinates)
+            self.body_frame.translate_to(x=state.x)
+
+            # Set rotation angle about Y if the body rotates based on state
+            if self.rotations and "Y" in self.rotations:
+                angle = getattr(state, self.rotations["Y"])
+                self.hack_save_frame_rotation(angle)
+                self.body_frame.set_rotation(rotation_matrix("Y", angle))
+
+    def hack_save_frame_rotation(self, angle: Quantity) -> None:
+        # TODO: eventually want to make _rot_angle obsolete by
+        # extracting this information from the frame's DCM.
+        # Currently in a simplified 2D case, the DCM can only recreate
+        # angles up to +/- 90 degrees.
+        self._rot_angle = angle
+        # Assign the rot angle to all sub-bodies
+        if hasattr(self, "bodies"):
+            for body in self.bodies:
+                body._rot_angle = angle
 
     def get_frame_rotation(self, axis: str) -> Quantity:
-        if self.body_frame.rotation_angles is None:
-            return 0 * ureg.degree
-        for rot in self.body_frame.rotation_angles:
-            rot_axis, rot_angle = rot
-            if rot_axis == axis:
-                return rot_angle
+        # Currently only support extracting rotation about Y from the DCM
+        axis = axis.upper()
+        if axis == "Y":
+            return self._rot_angle
         return 0 * ureg.degree
 
     @abstractmethod
@@ -96,14 +127,23 @@ class RigidBody(ABC):
 
     def parallel_axis_theorem(self, point: Point, cg_moi: np.ndarray) -> np.ndarray:
         mass = self.get_mass()
-        centroid = self.get_centroid()
-        offset = np.array([(centroid.x - point.x).magnitude,
-                           (centroid.y - point.y).magnitude,
-                           (centroid.z - point.z).magnitude]) * centroid.x.units
-        parallel_term = mass * (np.linalg.norm(offset)**2 * np.identity(3) -
-                                np.outer(offset.magnitude, offset.magnitude)*offset.units**2)
 
-        return cg_moi + parallel_term
+        # Ensure both centroid and point are in global coordinates
+        centroid_gp = self.get_centroid()
+        point_gp = point.to_global() if isinstance(point, Point) else point
+
+        c_arr, units = centroid_gp.to_array()
+        p_arr, _ = point_gp.to_array()
+
+        offset = c_arr - p_arr
+        mass_val = mass.to_base_units().magnitude
+
+        # numeric parallel term (unitless magnitudes)
+        parallel_numeric = mass_val * (np.linalg.norm(offset)**2 * np.identity(3) -
+                                       np.outer(offset, offset))* cg_moi.units
+
+        # Add to MOI about the CG
+        return (cg_moi + parallel_numeric)
 
 @dataclass(kw_only=True)
 class Block(RigidBody):
@@ -113,6 +153,8 @@ class Block(RigidBody):
     height: Quantity # Z dimension
 
     def __post_init__(self) -> None:
+        super().__post_init__()
+
         # Convert to base units
         self.width.ito_base_units()
         self.depth.ito_base_units()
@@ -153,6 +195,8 @@ class Cylinder(RigidBody, ABC):
     _dimensions: tuple = field(init=False)
 
     def __post_init__(self) -> None:
+        super().__post_init__()
+
         # Convert to base units
         self.length.ito_base_units()
         self.radius.ito_base_units()
@@ -180,6 +224,8 @@ class Sphere(RigidBody, ABC):
     _dimensions: tuple = field(init=False)
 
     def __post_init__(self) -> None:
+        super().__post_init__()
+
         # Convert to base units
         self.radius.ito_base_units()
 
@@ -200,9 +246,10 @@ class RigidBodySystem(RigidBody):
     mass: Quantity = field(init=False)
 
     def __post_init__(self) -> None:
-        if not all(body.body_frame == self.body_frame for body in self.bodies):
-            msg = "Currently, all bodies must be defined in the same coordinate system"
-            raise NotImplementedError(msg)
+        super().__post_init__()
+        if not all(body.parent_frame == self.body_frame for body in self.bodies):
+            msg = "All bodies in a RigidBodySystem must have matching parent frames."
+            raise ValueError(msg)
 
         self.mass = self.get_mass()
 
@@ -224,29 +271,13 @@ class RigidBodySystem(RigidBody):
             moi_matrix += body.get_moi_matrix(point)
         return moi_matrix
 
-    def update_frame(self, state: State, update_body: RigidBody | None = None) -> None:
+    def update_frame(self, state: State, sub_body: RigidBody | None = None) -> None:
         # Apply transformations to the system CS
-        # Translate to the position present in the state
-        self.body_frame.translate_to(x_pos=state.x)
-        # Rotate to the angles present in the state
-        self.body_frame.rotate_to(angles={"theta": state.theta})
+        super().update_frame(state)
 
         # Apply transformations to the bodies
-        if update_body:
-            update_body.body_frame.translate_to(x_pos=state.x)
-            origin = update_body.body_frame.origin
-            transformed_origin = update_body.body_frame.rotate_point_to(origin,
-                                                                 angles={"theta": state.theta},
-                                                                 pivot_point=self.body_frame.origin)
-            update_body.body_frame.set_origin_point(transformed_origin)
+        if sub_body:
+            sub_body.update_frame(state, pivot_point=self.body_frame.origin)
         else:
             for body in self.bodies:
-                body.body_frame.translate_to(x_pos=state.x)
-                origin = body.body_frame.origin
-                transformed_origin = self.body_frame.rotate_point_to(origin,
-                                                                    anges={"theta": state.theta},
-                                                                    pivot_point=self.body_frame.origin)
-                body.body_frame.set_origin_point(transformed_origin)
-
-    def transform_body(body, translation, rotation, pivot_point):
-        pass
+                body.update_frame(state, pivot_point=self.body_frame.origin)

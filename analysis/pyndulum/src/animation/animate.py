@@ -98,8 +98,9 @@ class SimAnimator:
         self.ax.yaxis.set_units(ureg.meter)
         self.ax.set_xlim(*xlims)
         self.ax.set_ylim(*ylims)
+        self.ax.set_aspect("equal", adjustable="box")
         self.ax.set_xlabel(f"X ({self.ax.xaxis.get_units():~P})")
-        self.ax.set_ylabel(f"Y ({self.ax.yaxis.get_units():~P})")
+        self.ax.set_ylabel(f"Z ({self.ax.yaxis.get_units():~P})")
         self.ax.set_title("Inverted Pendulum System")
         self.ax.grid()
 
