@@ -1,14 +1,22 @@
 from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.patches import Circle, Patch, Rectangle
 from pint import Quantity
 
-from src import ureg
-from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem, Rod, Sphere
+from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem, Sphere
 from src.variables import State
 
+
+class SpriteGenerator:
+    def get_sprite(self, source: RigidBody, **kwargs: dict) -> Patch:
+        match source:
+            case Block():
+                return Rectangle((0,0), source.width, source.height, **kwargs)
+            case Cylinder():
+                return Rectangle((0,0), 2*source.radius, source.length, **kwargs)
+            case Sphere():
+                return Circle((0,0), source.radius, **kwargs)
 
 class AnimObject(ABC):
     @abstractmethod
@@ -19,18 +27,34 @@ class AnimObject(ABC):
         pass
 
 class AnimCollection:
-    def __init__(self, source: RigidBodySystem, ax: plt.Axes, **kwargs: dict) -> None:
+    def __init__(self,
+                 sprite_gen: SpriteGenerator,
+                 source: RigidBodySystem,
+                 ax: plt.Axes,
+                 **kwargs: dict) -> None:
         self.patches = []
         self.source = source
 
         for body in source.bodies:
             match body:
                 case Block():
-                    self.patches.append(AnimRectangle(body, ax, collection=self, **kwargs))
+                    self.patches.append(AnimRectangle(sprite_gen,
+                                                      body,
+                                                      ax,
+                                                      collection=self,
+                                                      **kwargs))
                 case Cylinder():
-                    self.patches.append(AnimRectangle(body, ax, collection=self, **kwargs))
+                    self.patches.append(AnimRectangle(sprite_gen,
+                                                      body,
+                                                      ax,
+                                                      collection=self,
+                                                      **kwargs))
                 case Sphere():
-                    self.patches.append(AnimCircle(body, ax, collection=self, **kwargs))
+                    self.patches.append(AnimCircle(sprite_gen,
+                                                   body,
+                                                   ax,
+                                                   collection=self,
+                                                   **kwargs))
                 case _:
                     msg = f"Unsupported rigid body type for animation: {type(body)}"
                     raise NotImplementedError(msg)
@@ -40,18 +64,19 @@ class AnimCollection:
 
 class AnimRectangle(AnimObject):
     def __init__(self,
+                 sprite_gen: SpriteGenerator,
                  source: Block,
                  ax: plt.Axes,
                  collection: AnimCollection | None = None,
                  **kwargs: dict) -> None:
         self.source = source
-        rect = source.get_mpl_sprite(**kwargs)
-        self.rect = ax.add_patch(rect)
+        sprite = sprite_gen.get_sprite(self.source, **kwargs)
+        self.sprite = ax.add_patch(sprite)
         self.collection = collection
 
     def initialize(self) -> Rectangle:
-        self.rect.set_xy(([],[]))
-        return self.rect
+        self.sprite.set_xy(([],[]))
+        return self.sprite
 
     def update(self, state: State, *args: tuple, **kwargs: dict) -> Rectangle:
         if self.collection:
@@ -61,24 +86,25 @@ class AnimRectangle(AnimObject):
 
         lll_corner = self.source.get_point(BodyRefPoint.MINX_MINY_MINZ, cs_type="global")
         rotation = self.source.get_frame_rotation("Y")
-        self.rect.set_angle(-rotation.magnitude)
-        self.rect.set_xy((lll_corner.x, lll_corner.z))
-        return self.rect
+        self.sprite.set_angle(-rotation.magnitude)
+        self.sprite.set_xy((lll_corner.x, lll_corner.z))
+        return self.sprite
 
 class AnimCircle(AnimObject):
     def __init__(self,
+                 sprite_gen: SpriteGenerator,
                  source: Sphere,
                  ax: plt.Axes,
                  collection: AnimCollection | None = None,
                  **kwargs: dict) -> None:
         self.source = source
         self.collection = collection
-        circle = source.get_mpl_sprite(**kwargs)
-        self.circle = ax.add_patch(circle)
+        sprite = sprite_gen.get_sprite(self.source, **kwargs)
+        self.sprite = ax.add_patch(sprite)
 
     def initialize(self) -> Circle:
-        self.circle.set_center(([],[]))
-        return self.circle
+        self.sprite.set_center(([],[]))
+        return self.sprite
 
     def update(self, state: State, *args: tuple, **kwargs: dict) -> Circle:
         if self.collection:
@@ -87,8 +113,8 @@ class AnimCircle(AnimObject):
             self.source.update_frame(state)
 
         center = self.source.get_point(BodyRefPoint.CENTER, cs_type="global")
-        self.circle.set_center((center.x, center.z))
-        return self.circle
+        self.sprite.set_center((center.x, center.z))
+        return self.sprite
 
 
 class AnimText(AnimObject):

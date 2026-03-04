@@ -137,6 +137,7 @@ def main(parameter_file: Path) -> None:
 
 
     # Create the animator and show the animation
+    logger.info("Setting up animation...")
     animator = SimAnimator(system,
                            times,
                            output_df,

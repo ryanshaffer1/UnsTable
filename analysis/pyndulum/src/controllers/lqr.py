@@ -5,8 +5,8 @@ from scipy.linalg import solve_continuous_are
 from src import ureg
 from src.controllers.abstract_controller import AbstractController
 from src.dynamics import LinearizedModel
-from src.variables import State
 from src.system import System
+from src.variables import State
 
 
 class LQRController(AbstractController):

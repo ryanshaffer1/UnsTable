@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Self
+from typing import Self
 
 import numpy as np
 from pint import Quantity
@@ -37,6 +37,10 @@ class GlobalPoint:
     def to_array(self) -> tuple[np.ndarray, Quantity]:
         arr, units = _to_base_magnitudes(self.x, self.y, self.z)
         return arr, units
+
+    def to_array_with_units(self) -> np.ndarray:
+        arr, units = self.to_array()
+        return arr * units
 
     def vector_to(self, other: Self) -> np.ndarray:
         arr, units = _to_base_magnitudes(other.x - self.x, other.y - self.y, other.z - self.z)
@@ -140,13 +144,19 @@ class Point:
     z: Quantity = 0 * ureg.meter
 
     def add_offset(self, offset: tuple[Quantity, Quantity, Quantity]) -> Self:
-        return Point(frame=self.frame, x=self.x + offset[0], y=self.y + offset[1], z=self.z + offset[2])
+        return Point(frame=self.frame,
+                     x=self.x + offset[0],
+                     y=self.y + offset[1],
+                     z=self.z + offset[2])
 
     def to_global(self) -> GlobalPoint:
         return self.frame.to_global(self)
 
     def as_array(self) -> tuple[np.ndarray, Quantity]:
         return _to_base_magnitudes(self.x, self.y, self.z)
+
+    def to_array(self) -> np.ndarray:
+        return np.array((self.x, self.y, self.z))
 
     def vector_to(self, other: Self) -> np.ndarray:
         if self.frame is not other.frame:

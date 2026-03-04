@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Rectangle
@@ -14,8 +13,9 @@ from src.variables import State
 
 def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objects.AnimObject]:
     # Add animated objects and labels
-    cart_anim = objects.AnimRectangle(sys.cart, ax, color="gray")
-    pend_anim = objects.AnimCollection(sys.pendulum, ax, color="saddlebrown")
+    sprite_generator = objects.SpriteGenerator()
+    cart_anim = objects.AnimRectangle(sprite_generator, sys.cart, ax, color="gray")
+    pend_anim = objects.AnimCollection(sprite_generator, sys.pendulum, ax, color="saddlebrown")
     time_text_anim = objects.AnimText("Time: {time:.2f~P}", ax, x=0.02, y=0.02,
                                       bbox=textbox_format, transform=ax.transAxes,
                                       ha="left")
@@ -83,12 +83,11 @@ class SimAnimator:
 
     def format_plot(self) -> None:
         # Calculate plot limits to keep cart/pendulum in view
-        endpoint_history = self.sys.trace_pend_endpoint_history(self.history)
-        xlims = (np.min(endpoint_history[["base_x","tip_x"]]),
-                 np.max(endpoint_history[["base_x","tip_x"]]))
-        ylims = (np.min(endpoint_history[["base_y","tip_y"]]),
-                 np.max(endpoint_history[["base_y","tip_y"]]))
-        # Add margin and make sure origin is in view
+        bbox_x, _, bbox_z = self.sys.get_bounding_box(self.history)
+        xlims = bbox_x
+        ylims = bbox_z
+
+        # Add margin and make sure the origin is in view
         margin = 0.5 * ureg.meter
         xlims = [min(0, xlims[0]) - margin, max(0, xlims[1]) + margin]
         ylims = [min(0, ylims[0]) - margin, max(0, ylims[1]) + margin]

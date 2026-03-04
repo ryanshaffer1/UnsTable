@@ -4,8 +4,8 @@ import numpy as np
 from pint import Quantity
 
 from src import ureg
-from src.variables import State
 from src.system import System
+from src.variables import State
 
 
 class AbstractDynamicsModel(ABC):

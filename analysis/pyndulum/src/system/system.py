@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 from pint import Quantity
 
 from src import ureg
 from src.system import Actuator, Cart, Pendulum
-from src.system.primitives import BodyRefPoint
+from src.system.rigid_bodies import BodyRefPoint, update_bounding_box
+from src.variables import State
 
 
 @dataclass
@@ -32,13 +34,20 @@ class System:
         self.l_com = self.pendulum.centroid.z
 
 
-    def trace_pend_endpoint_history(self, history: pd.DataFrame) -> pd.DataFrame:
-        # Calculate the pendulum endpoint history based on the state history and system parameters
-        endpoint_history = history[["x","theta"]].apply(lambda row:
-            self.pendulum.get_endpoints(row["x"], row["theta"]),
-            axis=1, result_type="expand")
-        endpoint_history = endpoint_history.assign(base_x=endpoint_history[0].apply(lambda p: p[0]),
-                                                   base_y=endpoint_history[0].apply(lambda p: p[1]),
-                                                   tip_x=endpoint_history[1].apply(lambda p: p[0]),
-                                                   tip_y=endpoint_history[1].apply(lambda p: p[1]))
-        return endpoint_history
+    def get_bounding_box(self, history: pd.DataFrame) -> tuple[np.ndarray]:
+        # Initialize min/max values for X, Y, and Z limits
+        bounding_box = np.array(((np.nan, -np.nan),
+                                 (np.nan, -np.nan),
+                                 (np.nan, -np.nan)))*ureg.meter
+
+        # Iterate through all states
+        for _, row in history.iterrows():
+            state = State(*row[["x","vx","theta","omega"]].to_numpy())
+            # Get bounding boxes for the system components given the current state
+            bbox_cart = self.cart.global_bounding_box(state)
+            bbox_pend = self.pendulum.global_bounding_box(state)
+            # Update the overall bounding box
+            bounding_box = update_bounding_box(bounding_box,
+                                               np.concatenate((bbox_cart, bbox_pend), axis=1))
+
+        return tuple(bounding_box)

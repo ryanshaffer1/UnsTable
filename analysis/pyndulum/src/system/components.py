@@ -1,13 +1,11 @@
 from dataclasses import dataclass, field
 
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import collections, patches
 from pint import Quantity
 
 from src import ureg
-from src.coords import CoordFrame, GlobalPoint, Point
-from src.system.primitives import (
+from src.coords import CoordFrame, Point
+from src.system.rigid_bodies import (
     Block,
     BodyRefPoint,
     Cylinder,
@@ -15,7 +13,6 @@ from src.system.primitives import (
     RigidBodySystem,
     Sphere,
     )
-from src.variables import State
 
 
 @dataclass
@@ -50,18 +47,12 @@ class Cart(Block):
     def __post_init__(self) -> None:
         super().__post_init__()
 
-    def get_mpl_sprite(self, **kwargs: dict) -> patches.Rectangle:
-        return patches.Rectangle((0,0), self.width, self.height, **kwargs)
-
 @dataclass
 class Bob(Sphere):
     mass: Quantity = 0 * ureg.kg  # Mass of pendulum bob (if separate from rod mass)
     radius: Quantity = 4 * ureg.inches
     body_frame: CoordFrame = field(default_factory=CoordFrame)
     origin_type: BodyRefPoint = BodyRefPoint.BOTTOM_CENTER
-
-    def get_mpl_sprite(self, **kwargs: dict) -> patches.Circle:
-        return patches.Circle((0,0), self.radius, **kwargs)
 
 @dataclass
 class Rod(Cylinder):
@@ -71,22 +62,10 @@ class Rod(Cylinder):
     origin_type: BodyRefPoint = BodyRefPoint.BOTTOM_CENTER
     body_frame: CoordFrame = field(default_factory=CoordFrame)
 
-    @ureg.wraps(("meter", "meter"), (None, "meter", "radian"), strict=False)
-    def get_endpoints(self, x: float, theta: float,
-                      ) -> tuple[tuple[float, float], tuple[float, float]]:
-        # TODO: rewrite using primitives
-        bob_x = x + self.length.magnitude * np.sin(theta)
-        bob_y = self.length.magnitude * np.cos(theta)
-        return (x, 0), (bob_x, bob_y)
-
-    def get_mpl_sprite(self, **kwargs: dict) -> patches.Rectangle:
-        return patches.Rectangle((0,0), 2*self.radius, self.length, **kwargs)
-
 @dataclass
 class Pendulum(RigidBodySystem):
     rod: Rod = field(default_factory=Rod)
-    bob: Bob = field(default_factory=Bob)
-    # bob: Bob | None = None
+    bob: Bob | None = None
     bodies: list[RigidBody] = field(init=False)
     body_frame: CoordFrame = field(default_factory=CoordFrame)
     origin_type: None = None
@@ -115,19 +94,3 @@ class Pendulum(RigidBodySystem):
     def set_pivot_point(self, pivot_point: Point) -> None:
         self.body_frame.translate_to(point=pivot_point.to_global())
         self.moi = self.get_moi_matrix(self.body_frame.origin)
-
-    def get_endpoints(self,
-                      x: Quantity,
-                      theta: Quantity,
-                      ) -> tuple[tuple[Quantity, Quantity], tuple[Quantity, Quantity]]:
-        # Get rod endpoints
-        rod_start, rod_end = self.rod.get_endpoints(x, theta)
-        # Add pivot point offset to both endpoints
-        rod_start = (rod_start[0], rod_start[1] + self.body_frame.origin.z)
-        rod_end = (rod_end[0], rod_end[1] + self.body_frame.origin.z)
-
-        return rod_start, rod_end
-
-    def get_mpl_sprite(self, **kwargs: dict) -> list[patches.Patch]:
-        patches = [body.get_mpl_sprite(**kwargs) for body in self.bodies]
-        return patches

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from src.variables import State
 from src.system import System
+from src.variables import State
 
 
 class AbstractController(ABC):
