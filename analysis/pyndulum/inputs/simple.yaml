@@ -4,7 +4,32 @@ system: &sys !System
     refresh_rate: !unit 10 hertz
     command_lag: !unit 2 millisecond
   cart: !Cart {}
-  pendulum: !Pendulum {}
+  pendulum: !Pendulum
+    rod: &rod !Rod {}
+    bob: !RigidBodySystem
+      bodies:
+        - !Cylinder &tabletop
+          mass: !unit 0 kg
+          length: !unit 1 inch
+          radius: !unit 16 inch
+          origin_type: bottom_center
+          origin_mount: [*rod, top_center]
+        - !Block &load
+          mass: !unit 2 kg
+          width: !unit 2 inch
+          depth: !unit 2 inch
+          height: !unit 5 inch
+          origin_type: maxx_miny_minz
+          origin_mount: [*tabletop, maxx_miny_maxz]
+      origin_type: bottom_center
+
+    # bob: !Cylinder
+    #   mass: !unit 0 kg
+    #   length: !unit 1 inch
+    #   radius: !unit 16 inch
+    #   origin_type: bottom_center
+    #   origin_mount: [*rod, top_center]
+
 
 controller: !LQRController
   Q:  !array [[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]
@@ -22,7 +47,7 @@ disturbances: !GaussianDisturbance
   mean: !array [0, 0, 0, 0]
   std_dev: !array [0, 0.0, 0, 0.0]
 
-times: !unit [!range [0, 10, 0.02], second]
+times: !unit [!range [0, 10, 0.001], second]
 
 settings:
   random_seed: 42

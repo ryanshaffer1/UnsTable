@@ -12,12 +12,17 @@ constructable_classes = {
     "BasicDynamics": dynamics.BasicDynamics,
     "RK4Integrator": integrators.RK4Integrator,
     "State": variables.State,
+    "Block": system.Block,
+    "Cylinder": system.Cylinder,
+    "Sphere": system.Sphere,
+    "RigidBodySystem": system.RigidBodySystem,
     "Actuator": system.Actuator,
     "Cart": system.Cart,
     "Pendulum": system.Pendulum,
     "Bob": system.Bob,
     "Rod": system.Rod,
     "System": system.System,
+
     # Add other classes as needed
 }
 

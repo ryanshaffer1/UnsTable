@@ -16,6 +16,11 @@ def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objec
     sprite_generator = objects.SpriteGenerator()
     cart_anim = objects.AnimRectangle(sprite_generator, sys.cart, ax, color="gray")
     pend_anim = objects.AnimCollection(sprite_generator, sys.pendulum, ax, color="saddlebrown")
+    pend_centroid = objects.AnimPoint(sprite_generator,
+                                      sys.pendulum,
+                                      sys.pendulum.get_centroid,
+                                      ax,
+                                      color="black")
     time_text_anim = objects.AnimText("Time: {time:.2f~P}", ax, x=0.02, y=0.02,
                                       bbox=textbox_format, transform=ax.transAxes,
                                       ha="left")
@@ -35,6 +40,7 @@ def basic_objects(ax: plt.Axes, sys: System, textbox_format: dict) -> list[objec
 
     sim_objects = [cart_anim,
                    *pend_anim.patches,
+                   pend_centroid,
                    time_text_anim,
                    state_text_anim,
                    dist_text_anim,

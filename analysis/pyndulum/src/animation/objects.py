@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Self
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Patch, Rectangle
 from pint import Quantity
 
+from src import ureg
 from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem, Sphere
 from src.variables import State
 
@@ -31,9 +34,11 @@ class AnimCollection:
                  sprite_gen: SpriteGenerator,
                  source: RigidBodySystem,
                  ax: plt.Axes,
+                 collection: Self | None = None,
                  **kwargs: dict) -> None:
         self.patches = []
         self.source = source
+        self.collection = collection
 
         for body in source.bodies:
             match body:
@@ -55,6 +60,9 @@ class AnimCollection:
                                                    ax,
                                                    collection=self,
                                                    **kwargs))
+                case RigidBodySystem():
+                    subsystem = AnimCollection(sprite_gen, body, ax, collection=self, **kwargs)
+                    self.patches += subsystem.patches
                 case _:
                     msg = f"Unsupported rigid body type for animation: {type(body)}"
                     raise NotImplementedError(msg)
@@ -116,6 +124,34 @@ class AnimCircle(AnimObject):
         self.sprite.set_center((center.x, center.z))
         return self.sprite
 
+class AnimPoint(AnimObject):
+    def __init__(self,
+                 sprite_gen: SpriteGenerator,
+                 source: RigidBody,
+                 update_func: Callable,
+                 ax: plt.Axes,
+                 collection: AnimCollection | None = None,
+                 **kwargs: dict) -> None:
+        self.source = source
+        self.update_func = update_func
+        self.collection = collection
+        # Create a "virtual" sphere to show the point
+        point_sphere = Sphere(radius=0.5*ureg.inch,
+                              mass=0*ureg.kg,
+                              body_frame=None,
+                              origin_type=BodyRefPoint.CENTER)
+        sprite = sprite_gen.get_sprite(point_sphere, **kwargs)
+        self.sprite = ax.add_patch(sprite)
+
+    def initialize(self) -> Circle:
+        self.sprite.set_center(([],[]))
+        return self.sprite
+
+    def update(self, state: State, *args: tuple, **kwargs: dict) -> Circle:
+        self.source.update_frame(state)
+        center = self.update_func()
+        self.sprite.set_center((center.x, center.z))
+        return self.sprite
 
 class AnimText(AnimObject):
     def __init__(self, fmt: str, ax: plt.Axes, x: float, y: float, **kwargs: dict) -> None:

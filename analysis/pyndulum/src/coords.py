@@ -98,6 +98,7 @@ class CoordFrame:
 
     def set_init_origin(self, origin: GlobalPoint) -> None:
         self.init_origin = origin.copy()
+        self.reset_origin()
 
     def reset_origin(self) -> None:
         self.origin.x = self.init_origin.x

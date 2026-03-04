@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Self
 
 import numpy as np
 from pint import Quantity
@@ -24,6 +25,14 @@ class BodyRefPoint(Enum):
     MAXX_MAXY_MINZ = "maxx_maxy_minz"
     MAXX_MAXY_MAXZ = "maxx_maxy_maxz"
 
+    @classmethod
+    def from_string(cls, string: str) -> Self:
+        for member in cls:
+            if member.value == string:
+                return member
+        msg = f"Invalid string for BodyRefPoint: {string}"
+        raise ValueError(msg)
+
     def offset_to_centroid(self) -> np.ndarray:
         point_type_to_offset = {
             BodyRefPoint.CENTER:            np.array((0, 0, 0)),
@@ -43,15 +52,24 @@ class BodyRefPoint(Enum):
 @dataclass(kw_only=True)
 class RigidBody(ABC):
     mass: Quantity
-    body_frame: CoordFrame
-    origin_type: BodyRefPoint | None
+    origin_type: BodyRefPoint | str
     parent_frame: CoordFrame | None = None
     rotations: dict[str, str] | None = None
+    body_frame: CoordFrame = field(default_factory=CoordFrame)
+    origin_mount: list[Self, BodyRefPoint | str] | None = None
     _dimensions: np.ndarray = field(init=False)
     _parent_offset: np.ndarray | None = field(init=False)
     _rot_angle: Quantity = 0*ureg.degrees
 
     def __post_init__(self) -> None:
+        # Clean up/process optional inputs
+        if isinstance(self.origin_type, str):
+            self.origin_type = BodyRefPoint.from_string(self.origin_type)
+        if self.origin_mount:
+            if isinstance(self.origin_mount[1], str):
+                self.origin_mount[1] = BodyRefPoint.from_string(self.origin_mount[1])
+            self.set_origin_from_other_body(*self.origin_mount)
+
         # Convert to base units
         self.mass.ito_base_units()
         self.set_parent_frame(self.parent_frame)
@@ -96,6 +114,10 @@ class RigidBody(ABC):
             self.parent_frame = parent_frame
             self._parent_offset = self.parent_frame.get_frame_offset(self.body_frame)
 
+    def set_origin_from_other_body(self, other: Self, other_point_type: BodyRefPoint) -> None:
+        origin_gp = other.get_point(other_point_type, cs_type="global")
+        self.body_frame.set_init_origin(origin_gp)
+
     def update_frame(self, state: State) -> None:
         if self.parent_frame:
             # Set origin to parent origin
@@ -121,10 +143,10 @@ class RigidBody(ABC):
         # Currently in a simplified 2D case, the DCM can only recreate
         # angles up to +/- 90 degrees.
         self._rot_angle = angle
-        # Assign the rot angle to all sub-bodies
+        # Recursively assign the rot angle to all sub-bodies
         if hasattr(self, "bodies"):
             for body in self.bodies:
-                body._rot_angle = angle
+                body.hack_save_frame_rotation(angle)
 
     def get_frame_rotation(self, axis: str) -> Quantity:
         # Currently only support extracting rotation about Y from the DCM
@@ -146,12 +168,19 @@ class RigidBody(ABC):
         # Create point in body frame with those distances
         local_point = Point(self.body_frame, *offset_to_origin)
 
+        # Return the point in the desired CS
+        return self.local_point_by_cs_type(local_point, cs_type)
+
+    def local_point_by_cs_type(self, local_point: Point, cs_type: str) -> Point | GlobalPoint:
+        # Do nothing if local/body frame is desired
         if cs_type == "body":
             return local_point
 
         # Convert the body-local point to a GlobalPoint
         if cs_type in ("global", "world"):
             return self.body_frame.to_global(local_point)
+
+        # Throw error for unsupported CS type
         msg = f"Unsupported cs_type '{cs_type}' for get_point"
         raise ValueError(msg)
 
@@ -170,14 +199,14 @@ class RigidBody(ABC):
         # Initialize min/max values for X, Y, and Z
         bounding_box = np.array(((np.nan, -np.nan), (np.nan, -np.nan), (np.nan, -np.nan)))
 
-        # Get the global coordinates for the 8 corners of the body
+        # Get the normalized coordinates for the 8 corners of the body
         corner_types = [BodyRefPoint.MINX_MINY_MINZ, BodyRefPoint.MINX_MINY_MAXZ,
                         BodyRefPoint.MINX_MAXY_MINZ, BodyRefPoint.MINX_MAXY_MAXZ,
                         BodyRefPoint.MAXX_MINY_MINZ, BodyRefPoint.MAXX_MINY_MAXZ,
                         BodyRefPoint.MAXX_MAXY_MINZ, BodyRefPoint.MAXX_MAXY_MAXZ]
         for corner in corner_types:
             norm_dists = self.normalized_point_position(corner)
-            # corner_gp, _ = self.get_point(corner, cs_type="global").to_array()
+            # Keep track of the min and max normalized coordinates
             bounding_box = update_bounding_box(bounding_box, norm_dists)
 
         # Convert from normalized coordinates to global coordinates
@@ -267,24 +296,34 @@ class RigidBodySystem(RigidBody):
     mass: Quantity = field(init=False)
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        if not all(body.parent_frame == self.body_frame for body in self.bodies):
-            msg = "All bodies in a RigidBodySystem must have matching parent frames."
-            raise ValueError(msg)
-
+        # Calculate mass from sub-bodies
         self.mass = self.get_mass()
+
+        # Complete rigid body initialization to take care of some positioning/etc.
+        super().__post_init__()
+
+        # Set up coordinate frame hierarchy
+        for body in self.bodies:
+            body.set_parent_frame(self.body_frame)
+
+        # Calculate mass properties which depend on sub-body positioning
+        self.centroid = self.get_centroid()
+        self.moi = self.get_moi_matrix(self.body_frame.origin)
 
     def get_mass(self) -> Quantity:
         return sum(body.get_mass() for body in self.bodies)
 
-    def get_centroid(self) -> Point:
+    def get_centroid(self) -> GlobalPoint:
         total_mass = self.get_mass()
         if total_mass == 0 * ureg.kg:
             return self.bodies[0].body_frame.origin
+        # Calculate global x, y, and z coordinates via weighted sum of sub-body centroids
         x = sum(body.get_mass() * body.get_centroid().x for body in self.bodies) / total_mass
         y = sum(body.get_mass() * body.get_centroid().y for body in self.bodies) / total_mass
         z = sum(body.get_mass() * body.get_centroid().z for body in self.bodies) / total_mass
-        return Point(frame=self.body_frame, x=x, y=y, z=z)
+        # Return a global point of the centroid
+        centroid_gp = GlobalPoint(x=x, y=y, z=z)
+        return centroid_gp
 
     def get_moi_matrix(self, point: Point) -> np.ndarray:
         moi_matrix = np.zeros((3, 3))

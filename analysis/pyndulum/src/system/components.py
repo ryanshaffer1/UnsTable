@@ -49,6 +49,7 @@ class Cart(Block):
 
 @dataclass
 class Bob(Sphere):
+    """Convenience class setting default values for a spherical bob."""
     mass: Quantity = 0 * ureg.kg  # Mass of pendulum bob (if separate from rod mass)
     radius: Quantity = 4 * ureg.inches
     body_frame: CoordFrame = field(default_factory=CoordFrame)
@@ -56,6 +57,7 @@ class Bob(Sphere):
 
 @dataclass
 class Rod(Cylinder):
+    """Convenience class setting default values for a cylinder."""
     mass: Quantity = 2 * ureg.kg
     length: Quantity = 24 * ureg.inch
     radius: Quantity = 1 * ureg.inch
@@ -78,17 +80,9 @@ class Pendulum(RigidBodySystem):
         self.bodies = [self.rod]
         if self.bob is not None:
             self.bodies.append(self.bob)
-            rod_tip = self.rod.get_point(BodyRefPoint.TOP_CENTER, cs_type="global")
-            self.bob.body_frame.set_init_origin(rod_tip)
-            self.bob.body_frame.reset_origin()
-        for body in self.bodies:
-            body.set_parent_frame(self.body_frame)
-
-        # Caclulate mass properties
-        self.mass = self.get_mass()
-        self.centroid = self.get_centroid()
-        self.moi = self.get_moi_matrix(self.body_frame.origin)
-
+            if self.bob.origin_mount is None:
+                self.bob.origin_mount = [self.rod, BodyRefPoint.TOP_CENTER]
+                self.bob.set_origin_from_other_body(*self.bob.origin_mount)
         super().__post_init__()
 
     def set_pivot_point(self, pivot_point: Point) -> None:
