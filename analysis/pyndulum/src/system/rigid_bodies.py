@@ -51,6 +51,7 @@ class BodyRefPoint(Enum):
 
 @dataclass(kw_only=True)
 class RigidBody(ABC):
+    name: str
     mass: Quantity
     origin_type: BodyRefPoint | str
     parent_frame: CoordFrame | None = None
@@ -220,6 +221,7 @@ class Block(RigidBody):
     width: Quantity # X dimension
     depth: Quantity # Y dimension
     height: Quantity # Z dimension
+    name: str = "block"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -246,6 +248,7 @@ class Block(RigidBody):
 class Cylinder(RigidBody, ABC):
     length: Quantity
     radius: Quantity
+    name: str = "cylinder"
     _dimensions: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -271,6 +274,7 @@ class Cylinder(RigidBody, ABC):
 @dataclass(kw_only=True)
 class Sphere(RigidBody, ABC):
     radius: Quantity
+    name: str = "sphere"
     _dimensions: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -293,6 +297,7 @@ class Sphere(RigidBody, ABC):
 @dataclass(kw_only=True)
 class RigidBodySystem(RigidBody):
     bodies: list[RigidBody]
+    name: str = "body_system"
     mass: Quantity = field(init=False)
 
     def __post_init__(self) -> None:

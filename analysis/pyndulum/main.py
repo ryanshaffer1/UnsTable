@@ -13,7 +13,6 @@ from pint import Quantity
 from tqdm import tqdm
 
 from src import ureg
-from src.animation import SimAnimator
 from src.controllers import AbstractController
 from src.dynamics import BasicDynamics
 from src.integrators import Integrator, RK4Integrator
@@ -109,6 +108,7 @@ def main(parameter_file: Path) -> None:
     controller = params["controller"]
     init_state = params["initial_state"]
     times = params["times"]
+    animator = params.get("animation")
     settings = params.get("settings", {})
 
     # Set random seed
@@ -138,18 +138,19 @@ def main(parameter_file: Path) -> None:
 
     # Create the animator and show the animation
     logger.info("Setting up animation...")
-    animator = SimAnimator(system,
-                           times,
-                           output_df,
-                           show_progress=settings.get("show_progress", True))
+    if animator:
+        animator.create_system_animation(system,
+                                         times,
+                                         output_df,
+                                         show_progress=settings.get("show_progress", True))
 
-    if settings.get("save_animation", False):
-        logger.info("Saving animation...")
-        animator.save("pyndulum.gif")
+        if settings.get("save_animation", False):
+            logger.info("Saving animation...")
+            animator.save("pyndulum.gif")
 
-    if settings.get("show_animation", True):
-        logger.info("Showing animation...")
-        animator.show()
+        if settings.get("show_animation", True):
+            logger.info("Showing animation...")
+            animator.show()
 
 def cli(args: list[str]) -> tuple[Path]:
     parser = argparse.ArgumentParser(description="Simulate and animate a cart-pendulum system.")

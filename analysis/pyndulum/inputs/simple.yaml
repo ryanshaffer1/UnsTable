@@ -15,6 +15,7 @@ system: &sys !System
           origin_type: bottom_center
           origin_mount: [*rod, top_center]
         - !Block &load
+          name: cup
           mass: !unit 2 kg
           width: !unit 2 inch
           depth: !unit 2 inch
@@ -47,7 +48,24 @@ disturbances: !GaussianDisturbance
   mean: !array [0, 0, 0, 0]
   std_dev: !array [0, 0.0, 0, 0.0]
 
-times: !unit [!range [0, 10, 0.001], second]
+times: !unit [!range [0, 10, 0.02], second]
+
+animation: !Mpl2dAnimator
+  plot_formatter: !MplPlotFormatter
+    limits: [[!unit -0.5 meter, !unit 1.5 meter], [!unit -0.5 meter, !unit 1.5 meter]]
+  sprite_formatter: !MplSpriteFormatter
+    cart:
+      facecolor: gray
+    pendulum:
+      facecolor: saddlebrown
+    cup:
+      facecolor: cyan
+      lw: 0.5
+      edgecolor: black
+    point:
+      color: black
+  display_eng_info: true
+  refresh_rate: !unit 30 hertz
 
 settings:
   random_seed: 42

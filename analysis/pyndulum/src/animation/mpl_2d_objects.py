@@ -11,15 +11,48 @@ from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem
 from src.variables import State
 
 
+class MplSpriteFormatter:
+    def __init__(self, **format_spec: dict) -> None:
+        self.format_spec = format_spec
+        self.specs_by_name = self.validate_spec_input()
+
+    def validate_spec_input(self) -> bool:
+        # Check if specs are provided on a name-by-name basis
+        # (true if format spec is a dict of dicts)
+        if all(isinstance(x, dict) for x in self.format_spec.values()):
+            return True
+        # If format spec is has some values that are dicts, then something is wrong
+        if any(isinstance(x, dict) for x in self.format_spec.values()):
+            msg = "MplSpriteFormatter provided invalid input."
+            raise ValueError(msg)
+        # If format spec is a "raw" dict, then specs are not provided on a name-by-name basis
+        return False
+
+    def get_spec(self, name: str) -> dict:
+        if self.specs_by_name:
+            # Return the format spec corresponding with the object name, or a default, or none
+            if name in self.format_spec:
+                return self.format_spec[name]
+            return self.format_spec.get("default", {})
+        # If there is just one format spec, return that
+        return self.format_spec
+
 class SpriteGenerator:
-    def get_sprite(self, source: RigidBody, **kwargs: dict) -> Patch:
+    def __init__(self, formatter: MplSpriteFormatter) -> None:
+        self.formatter = formatter
+
+    def get_sprite(self, source: RigidBody, format_spec: dict | None = None) -> Patch:
+        # Set formatting
+        format_spec = format_spec if format_spec else {}
+        format_spec.update(self.formatter.get_spec(source.name))
+
         match source:
             case Block():
-                return Rectangle((0,0), source.width, source.height, **kwargs)
+                return Rectangle((0,0), source.width, source.height, **format_spec)
             case Cylinder():
-                return Rectangle((0,0), 2*source.radius, source.length, **kwargs)
+                return Rectangle((0,0), 2*source.radius, source.length, **format_spec)
             case Sphere():
-                return Circle((0,0), source.radius, **kwargs)
+                return Circle((0,0), source.radius, **format_spec)
 
 class AnimObject(ABC):
     @abstractmethod
@@ -40,28 +73,29 @@ class AnimCollection:
         self.source = source
         self.collection = collection
 
+        # Get collection's format spec to apply to all bodies
+        self.format_spec = collection.format_spec if collection else {}
+        self.format_spec.update(sprite_gen.formatter.get_spec(self.source.name))
+
         for body in source.bodies:
             match body:
                 case Block():
                     self.patches.append(AnimRectangle(sprite_gen,
                                                       body,
                                                       ax,
-                                                      collection=self,
-                                                      **kwargs))
+                                                      collection=self))
                 case Cylinder():
                     self.patches.append(AnimRectangle(sprite_gen,
                                                       body,
                                                       ax,
-                                                      collection=self,
-                                                      **kwargs))
+                                                      collection=self))
                 case Sphere():
                     self.patches.append(AnimCircle(sprite_gen,
                                                    body,
                                                    ax,
-                                                   collection=self,
-                                                   **kwargs))
+                                                   collection=self))
                 case RigidBodySystem():
-                    subsystem = AnimCollection(sprite_gen, body, ax, collection=self, **kwargs)
+                    subsystem = AnimCollection(sprite_gen, body, ax, collection=self)
                     self.patches += subsystem.patches
                 case _:
                     msg = f"Unsupported rigid body type for animation: {type(body)}"
@@ -75,12 +109,12 @@ class AnimRectangle(AnimObject):
                  sprite_gen: SpriteGenerator,
                  source: Block,
                  ax: plt.Axes,
-                 collection: AnimCollection | None = None,
-                 **kwargs: dict) -> None:
+                 collection: AnimCollection | None = None) -> None:
         self.source = source
-        sprite = sprite_gen.get_sprite(self.source, **kwargs)
-        self.sprite = ax.add_patch(sprite)
         self.collection = collection
+        prev_format_spec = collection.format_spec if collection else None
+        sprite = sprite_gen.get_sprite(self.source, format_spec=prev_format_spec)
+        self.sprite = ax.add_patch(sprite)
 
     def initialize(self) -> Rectangle:
         self.sprite.set_xy(([],[]))
@@ -103,11 +137,11 @@ class AnimCircle(AnimObject):
                  sprite_gen: SpriteGenerator,
                  source: Sphere,
                  ax: plt.Axes,
-                 collection: AnimCollection | None = None,
-                 **kwargs: dict) -> None:
+                 collection: AnimCollection | None = None) -> None:
         self.source = source
         self.collection = collection
-        sprite = sprite_gen.get_sprite(self.source, **kwargs)
+        prev_format_spec = collection.format_spec if collection else None
+        sprite = sprite_gen.get_sprite(self.source, format_spec=prev_format_spec)
         self.sprite = ax.add_patch(sprite)
 
     def initialize(self) -> Circle:
@@ -135,12 +169,14 @@ class AnimPoint(AnimObject):
         self.source = source
         self.update_func = update_func
         self.collection = collection
+        prev_format_spec = collection.format_spec if collection else None
         # Create a "virtual" sphere to show the point
-        point_sphere = Sphere(radius=0.5*ureg.inch,
+        point_sphere = Sphere(name=kwargs.get("name","point"),
+                              radius=0.5*ureg.inch,
                               mass=0*ureg.kg,
                               body_frame=None,
                               origin_type=BodyRefPoint.CENTER)
-        sprite = sprite_gen.get_sprite(point_sphere, **kwargs)
+        sprite = sprite_gen.get_sprite(point_sphere, format_spec=prev_format_spec)
         self.sprite = ax.add_patch(sprite)
 
     def initialize(self) -> Circle:

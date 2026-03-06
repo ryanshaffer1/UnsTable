@@ -36,6 +36,7 @@ class Actuator:
 
 @dataclass
 class Cart(Block):
+    name: str = "cart"
     mass: Quantity = 1 * ureg.kg
     width: Quantity = 8 * ureg["inch"]
     height: Quantity = 4 * ureg["inch"]
@@ -50,6 +51,7 @@ class Cart(Block):
 @dataclass
 class Bob(Sphere):
     """Convenience class setting default values for a spherical bob."""
+    name: str = "bob"
     mass: Quantity = 0 * ureg.kg  # Mass of pendulum bob (if separate from rod mass)
     radius: Quantity = 4 * ureg.inches
     body_frame: CoordFrame = field(default_factory=CoordFrame)
@@ -58,6 +60,7 @@ class Bob(Sphere):
 @dataclass
 class Rod(Cylinder):
     """Convenience class setting default values for a cylinder."""
+    name: str = "rod"
     mass: Quantity = 2 * ureg.kg
     length: Quantity = 24 * ureg.inch
     radius: Quantity = 1 * ureg.inch
@@ -66,6 +69,7 @@ class Rod(Cylinder):
 
 @dataclass
 class Pendulum(RigidBodySystem):
+    name: str = "pendulum"
     rod: Rod = field(default_factory=Rod)
     bob: Bob | None = None
     bodies: list[RigidBody] = field(init=False)
@@ -80,7 +84,7 @@ class Pendulum(RigidBodySystem):
         self.bodies = [self.rod]
         if self.bob is not None:
             self.bodies.append(self.bob)
-            if self.bob.origin_mount is None:
+            if not isinstance(self.bob, RigidBodySystem) and self.bob.origin_mount is None:
                 self.bob.origin_mount = [self.rod, BodyRefPoint.TOP_CENTER]
                 self.bob.set_origin_from_other_body(*self.bob.origin_mount)
         super().__post_init__()

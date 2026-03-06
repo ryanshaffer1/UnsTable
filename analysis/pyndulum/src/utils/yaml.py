@@ -2,7 +2,7 @@ import numpy as np
 import yaml
 from pint import Quantity
 
-from src import controllers, dynamics, integrators, system, ureg, variables
+from src import animation, controllers, dynamics, integrators, system, ureg, variables
 
 # Following classes use generic "constructor" function (best suited for dataclasses)
 constructable_classes = {
@@ -22,6 +22,9 @@ constructable_classes = {
     "Bob": system.Bob,
     "Rod": system.Rod,
     "System": system.System,
+    "Mpl2dAnimator": animation.Mpl2dAnimator,
+    "MplPlotFormatter": animation.MplPlotFormatter,
+    "MplSpriteFormatter": animation.MplSpriteFormatter,
 
     # Add other classes as needed
 }
