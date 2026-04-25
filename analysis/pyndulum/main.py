@@ -27,7 +27,7 @@ logger = logging.getLogger("log")
 
 @dataclass
 class Simulation:
-    system: System
+    systems: list[System]
     controller: AbstractController
     state: State
     dynamics: BasicDynamics = field(default_factory=BasicDynamics)
@@ -60,6 +60,9 @@ class Simulation:
         if show_progress:
             times = tqdm(times)
 
+        # Keep track of active system
+        self.active_system = self.get_valid_system(time = 0*ureg.seconds)
+
         # Iterate through all simulation times
         for i, t in enumerate(times):
             # Update state and control input
@@ -78,24 +81,41 @@ class Simulation:
         self.time = time
         delta_time = time - prev_time
 
+        # Get active system
+        system = self.get_valid_system(time)
+
+        # Handle transitions from one active system to another
+        if system is not self.active_system:
+            self.state = system.update_state_during_transition(self.active_system, self.state)
+            self.active_system = system
+
         # Update the commanded actuator input based on control law
-        if self.system.actuator.is_update_time(time, delta_time):
-            self.lag_u = self.controller.compute_u(self.system, self.state)
+        if system.actuator.is_update_time(time, delta_time):
+            self.lag_u = self.controller.compute_u(system, self.state)
             self.lag_window_start = self.time
         # Actually apply the new actuator input if the lag window is satisfied
-        if self.system.actuator.is_past_lag_time(time, self.lag_window_start):
+        if system.actuator.is_past_lag_time(time, self.lag_window_start):
             self.u = self.lag_u
 
         # STATE UPDATE (using numerical integrator and nonlinear dynamics)
         self.state = self.integrator.step(self.dynamics.nonlinear.calc_state_derivative,
                                           self.state,
                                           delta_time.magnitude,
-                                          self.system,
+                                          system,
                                           self.u)
 
         # Add disturbances to the state
         self.dist = self.disturbances.apply(self.state, time, self.rng)
         self.state = self.state.add_vector(self.dist)
+
+    def get_valid_system(self, time: Quantity) -> System:
+        valid_systems = [sys for sys in self.systems if sys.valid_time(time)]
+        if not valid_systems or len(valid_systems) > 1:
+            msg = f"Time {time} has {len(valid_systems)} valid systems. Check system time intervals."
+            logger.warning(msg)
+            raise ValueError(msg)
+        return valid_systems[0]
+
 
 def main(parameter_file: Path) -> None:
     add_yaml_constructors()
@@ -104,18 +124,24 @@ def main(parameter_file: Path) -> None:
         params = yaml.safe_load(stream)
 
     # Unpack required parameters from YAML file
-    system = params["system"]
+    systems = params["systems"] if "systems" in params else params["system"]
     controller = params["controller"]
     init_state = params["initial_state"]
     times = params["times"]
     animator = params.get("animation")
     settings = params.get("settings", {})
 
+    # Set validity intervals for system if only one is provided
+    if isinstance(systems, System):
+        systems.times = (times[0], times[-1])
+        systems = [systems]
+
+
     # Set random seed
     rng = np.random.default_rng(settings.get("random_seed", 42))
 
     # Initialize simulation
-    sim = Simulation(system=system,
+    sim = Simulation(systems=systems,
                      controller=controller,
                      state=init_state,
                      dynamics=params.get("dynamics"),
@@ -139,7 +165,7 @@ def main(parameter_file: Path) -> None:
     # Create the animator and show the animation
     logger.info("Setting up animation...")
     if animator:
-        animator.create_system_animation(system,
+        animator.create_system_animation(systems,
                                          times,
                                          output_df,
                                          show_progress=settings.get("show_progress", True))

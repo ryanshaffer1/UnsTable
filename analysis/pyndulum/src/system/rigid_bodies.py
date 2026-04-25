@@ -17,12 +17,31 @@ class BodyRefPoint(Enum):
     BOTTOM_CENTER = "bottom_center"
     TOP_CENTER = "top_center"
     MINX_MINY_MINZ = "minx_miny_minz"
+    MINX_MINY_CENZ = "minx_miny_cenz"
     MINX_MINY_MAXZ = "minx_miny_maxz"
+    MINX_CENY_MINZ = "minx_ceny_minz"
+    MINX_CENY_CENZ = "minx_ceny_cenz"
+    MINX_CENY_MAXZ = "minx_ceny_maxz"
     MINX_MAXY_MINZ = "minx_maxy_minz"
+    MINX_MAXY_CENZ = "minx_maxy_cenz"
     MINX_MAXY_MAXZ = "minx_maxy_maxz"
+    CENX_MINY_MINZ = "cenx_miny_minz"
+    CENX_MINY_CENZ = "cenx_miny_cenz"
+    CENX_MINY_MAXZ = "cenx_miny_maxz"
+    CENX_CENY_MINZ = "cenx_ceny_minz"
+    CENX_CENY_CENZ = "cenx_ceny_cenz"
+    CENX_CENY_MAXZ = "cenx_ceny_maxz"
+    CENX_MAXY_MINZ = "cenx_maxy_minz"
+    CENX_MAXY_CENZ = "cenx_maxy_cenz"
+    CENX_MAXY_MAXZ = "cenx_maxy_maxz"
     MAXX_MINY_MINZ = "maxx_miny_minz"
+    MAXX_MINY_CENZ = "maxx_miny_cenz"
     MAXX_MINY_MAXZ = "maxx_miny_maxz"
+    MAXX_CENY_MINZ = "maxx_ceny_minz"
+    MAXX_CENY_CENZ = "maxx_ceny_cenz"
+    MAXX_CENY_MAXZ = "maxx_ceny_maxz"
     MAXX_MAXY_MINZ = "maxx_maxy_minz"
+    MAXX_MAXY_CENZ = "maxx_maxy_cenz"
     MAXX_MAXY_MAXZ = "maxx_maxy_maxz"
 
     @classmethod
@@ -39,12 +58,31 @@ class BodyRefPoint(Enum):
             BodyRefPoint.BOTTOM_CENTER:     np.array((0, 0, 0.5)),
             BodyRefPoint.TOP_CENTER:        np.array((0, 0, -0.5)),
             BodyRefPoint.MINX_MINY_MINZ:    np.array((0.5, 0.5, 0.5)),
+            BodyRefPoint.MINX_MINY_CENZ:    np.array((0.5, 0.5, 0)),
             BodyRefPoint.MINX_MINY_MAXZ:    np.array((0.5, 0.5, -0.5)),
+            BodyRefPoint.MINX_CENY_MINZ:    np.array((0.5, 0, 0.5)),
+            BodyRefPoint.MINX_CENY_CENZ:    np.array((0.5, 0, 0)),
+            BodyRefPoint.MINX_CENY_MAXZ:    np.array((0.5, 0, -0.5)),
             BodyRefPoint.MINX_MAXY_MINZ:    np.array((0.5, -0.5, 0.5)),
+            BodyRefPoint.MINX_MAXY_CENZ:    np.array((0.5, -0.5, 0)),
             BodyRefPoint.MINX_MAXY_MAXZ:    np.array((0.5, -0.5, -0.5)),
+            BodyRefPoint.CENX_MINY_MINZ:    np.array((0, 0.5, 0.5)),
+            BodyRefPoint.CENX_MINY_CENZ:    np.array((0, 0.5, 0)),
+            BodyRefPoint.CENX_MINY_MAXZ:    np.array((0, 0.5, -0.5)),
+            BodyRefPoint.CENX_CENY_MINZ:    np.array((0, 0, 0.5)),
+            BodyRefPoint.CENX_CENY_CENZ:    np.array((0, 0, 0)),
+            BodyRefPoint.CENX_CENY_MAXZ:    np.array((0, 0, -0.5)),
+            BodyRefPoint.CENX_MAXY_MINZ:    np.array((0, -0.5, 0.5)),
+            BodyRefPoint.CENX_MAXY_CENZ:    np.array((0, -0.5, 0)),
+            BodyRefPoint.CENX_MAXY_MAXZ:    np.array((0, -0.5, -0.5)),
             BodyRefPoint.MAXX_MINY_MINZ:    np.array((-0.5, 0.5, 0.5)),
+            BodyRefPoint.MAXX_MINY_CENZ:    np.array((-0.5, 0.5, 0)),
             BodyRefPoint.MAXX_MINY_MAXZ:    np.array((-0.5, 0.5, -0.5)),
+            BodyRefPoint.MAXX_CENY_MINZ:    np.array((-0.5, 0, 0.5)),
+            BodyRefPoint.MAXX_CENY_CENZ:    np.array((-0.5, 0, 0)),
+            BodyRefPoint.MAXX_CENY_MAXZ:    np.array((-0.5, 0, -0.5)),
             BodyRefPoint.MAXX_MAXY_MINZ:    np.array((-0.5, -0.5, 0.5)),
+            BodyRefPoint.MAXX_MAXY_CENZ:    np.array((-0.5, -0.5, 0)),
             BodyRefPoint.MAXX_MAXY_MAXZ:    np.array((-0.5, -0.5, -0.5)),
         }
         return point_type_to_offset[self]
@@ -56,6 +94,7 @@ class RigidBody(ABC):
     origin_type: BodyRefPoint | str
     parent_frame: CoordFrame | None = None
     rotations: dict[str, str] | None = None
+    rotation_offsets: dict[str, Quantity] | None = None
     body_frame: CoordFrame = field(default_factory=CoordFrame)
     origin_mount: list[Self, BodyRefPoint | str] | None = None
     _dimensions: np.ndarray = field(init=False)
@@ -70,6 +109,8 @@ class RigidBody(ABC):
             if isinstance(self.origin_mount[1], str):
                 self.origin_mount[1] = BodyRefPoint.from_string(self.origin_mount[1])
             self.set_origin_from_other_body(*self.origin_mount)
+        if self.rotation_offsets is None:
+            self.rotation_offsets = {}
 
         # Convert to base units
         self.mass.ito_base_units()
@@ -134,7 +175,7 @@ class RigidBody(ABC):
 
             # Set rotation angle about Y if the body rotates based on state
             if self.rotations and "Y" in self.rotations:
-                angle = getattr(state, self.rotations["Y"])
+                angle = getattr(state, self.rotations["Y"]) - self.rotation_offsets.get("Y", 0)
                 self.hack_save_frame_rotation(angle)
                 self.body_frame.set_rotation(rotation_matrix("Y", angle))
 

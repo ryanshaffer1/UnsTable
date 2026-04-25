@@ -88,6 +88,8 @@ class Pendulum(RigidBodySystem):
                 self.bob.origin_mount = [self.rod, BodyRefPoint.TOP_CENTER]
                 self.bob.set_origin_from_other_body(*self.bob.origin_mount)
         super().__post_init__()
+        # Set rotation offset such that theta is aligned with the centroid
+        self.rotation_offsets = {"Y": self.centroid.get_angle_from_axis("Z")}
 
     def set_pivot_point(self, pivot_point: Point) -> None:
         self.body_frame.translate_to(point=pivot_point.to_global())

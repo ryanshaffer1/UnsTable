@@ -42,12 +42,25 @@ class GlobalPoint:
         arr, units = self.to_array()
         return arr * units
 
+    def get_angle_from_axis(self, axis: str) -> Quantity:
+        axis = axis.upper()
+        if axis == "X":
+            return np.arctan2(np.sqrt(self.y**2 + self.z**2), self.x)
+        if axis == "Y":
+            return np.arctan2(np.sqrt(self.x**2 + self.z**2), self.y)
+        if axis == "Z":
+            return np.arctan2(np.sqrt(self.x**2 + self.y**2), self.z)
+        msg = f"Unknown axis '{axis}' for angle calculation"
+        raise ValueError(msg)
+
     def vector_to(self, other: Self) -> np.ndarray:
+        if isinstance(other, Point):
+            other = other.to_global()
         arr, units = _to_base_magnitudes(other.x - self.x, other.y - self.y, other.z - self.z)
         return arr * units
 
     def copy(self) -> Self:
-        return GlobalPoint(x=self.x, y=self.x, z=self.z)
+        return GlobalPoint(x=self.x, y=self.y, z=self.z)
 
 @dataclass
 class CoordFrame:
@@ -159,13 +172,23 @@ class Point:
     def to_array(self) -> np.ndarray:
         return np.array((self.x, self.y, self.z))
 
+    def get_angle_from_axis(self, axis: str) -> Quantity:
+        axis = axis.upper()
+        if axis == "X":
+            return np.arctan2(np.sqrt(self.y**2 + self.z**2), self.x) * ureg.radians
+        if axis == "Y":
+            return np.arctan2(np.sqrt(self.x**2 + self.z**2), self.y) * ureg.radians
+        if axis == "Z":
+            return np.arctan2(np.sqrt(self.x**2 + self.y**2), self.z) * ureg.radians
+        msg = f"Unknown axis '{axis}' for angle calculation"
+        raise ValueError(msg)
+
     def vector_to(self, other: Self) -> np.ndarray:
         if self.frame is not other.frame:
             msg = "Vector between points in different frames: convert to a common frame first."
             raise ValueError(msg)
         arr, units = _to_base_magnitudes(other.x - self.x, other.y - self.y, other.z - self.z)
         return arr * units
-
 
 def rotation_matrix(axis: str, angle: Quantity) -> np.ndarray:
     """Return a 3x3 rotation matrix about axis 'X','Y', or 'Z' by `angle` radians."""

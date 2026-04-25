@@ -28,7 +28,7 @@ class MplPlotFormatter:
         if self.textbox_format is None:
             self.textbox_format = {"facecolor":"w", "alpha":0.5, "pad":5}
 
-    def format_plot(self, ax: plt.Axes, sys: System, history: pd.DataFrame) -> None:
+    def format_plot(self, ax: plt.Axes, systems: list[System], history: pd.DataFrame) -> None:
         # Set titles
         ax.set_title(self.plot_title)
         ax.set_xlabel(self.xlabel.format(self.axis_units))
@@ -37,7 +37,7 @@ class MplPlotFormatter:
         # Set axis limits and units
         ax.xaxis.set_units(self.axis_units)
         ax.yaxis.set_units(self.axis_units)
-        self.set_plot_limits(sys, history)
+        self.set_plot_limits(systems, history)
         ax.set_xlim(self.limits[0])
         ax.set_ylim(self.limits[1])
 
@@ -47,21 +47,28 @@ class MplPlotFormatter:
         if self.grid:
             ax.grid()
 
-    def set_plot_limits(self, sys: System, history: pd.DataFrame) -> None:
+    def set_plot_limits(self, systems: list[System], history: pd.DataFrame) -> None:
         # Check if limits have already been set
         if self.limits is not None:
             return
 
-        # Calculate the plot limits to always keep the system in view
-        bbox_x, _, bbox_z = sys.get_bounding_box(history)
-        xlims = bbox_x
-        ylims = bbox_z
-        # Add margin and make sure the origin is in view
-        margin = 0.5 * ureg.meter
-        xlims = [min(0, xlims[0]) - margin, max(0, xlims[1]) + margin]
-        ylims = [min(0, ylims[0]) - margin, max(0, ylims[1]) + margin]
-        # Save the new limits
-        self.limits = [xlims, ylims]
+        # Initialize limits to be updated based on system bounding boxes
+        limits = [[0,0], [0,0]]
+
+        for sys in systems:
+            # Calculate the plot limits to always keep the system in view
+            bbox_x, _, bbox_z = sys.get_bounding_box(history)
+            xlims = bbox_x
+            ylims = bbox_z
+            # Add margin and make sure the origin is in view
+            margin = 0.5 * ureg.meter
+            xlims = [min(0, xlims[0]) - margin, max(0, xlims[1]) + margin]
+            ylims = [min(0, ylims[0]) - margin, max(0, ylims[1]) + margin]
+            # Update based on previously computed limits
+            limits = [[min(xlims[0], limits[0][0]), max(xlims[1], limits[0][1])]
+                      ,[min(ylims[0], limits[1][0]), max(ylims[1], limits[1][1])]]
+
+        self.limits = limits
 
 class Mpl2dAnimator:
     def __init__(self,
@@ -78,22 +85,24 @@ class Mpl2dAnimator:
         self.display_eng_info = display_eng_info
 
     def create_system_animation(self,
-                                system: System,
+                                systems: list[System],
                                 times: Quantity,
                                 history_df: pd.DataFrame,
                                 *args: list,
                                 show_progress: bool = True,
                                 ) -> None:
         # Assign attributes for ease of access in update func
-        self.system = system
+        self.systems = systems
         self.times = times
         self.history = history_df
 
         # Format plot
-        self.plot_formatter.format_plot(self.ax, system, history_df)
+        self.plot_formatter.format_plot(self.ax, systems, history_df)
 
         # Create animation objects
-        self.objects = self.gen_anim_objects()
+        self.objects = []
+        for sys in self.systems:
+            self.objects.extend(self.gen_anim_objects(sys))
 
         # Calculate frames to control animation refresh rate
         sim_time_step = times[1] - times[0]
@@ -114,12 +123,12 @@ class Mpl2dAnimator:
             interval = int((1/self.refresh_rate).to("millisecond").magnitude),
         )
 
-    def gen_anim_objects(self) -> list[obj.AnimObject]:
+    def gen_anim_objects(self, sys: System) -> list[obj.AnimObject]:
         sprite_generator = obj.SpriteGenerator(self.sprite_formatter)
-        sim_objects = []
+        sim_objects: list[obj.AnimObject] = []
         # Cart and pendulum
-        sim_objects.append(obj.AnimRectangle(sprite_generator, self.system.cart, self.ax))
-        sim_objects += obj.AnimCollection(sprite_generator, self.system.pendulum, self.ax).patches
+        sim_objects.append(obj.AnimRectangle(sprite_generator, sys.cart, self.ax))
+        sim_objects += obj.AnimCollection(sprite_generator, sys.pendulum, self.ax).patches
         # Text box for time
         sim_objects.append(obj.AnimText("Time: {time:.2f~P}", self.ax, x=0.02, y=0.02,
                                         bbox=self.plot_formatter.textbox_format,
@@ -127,8 +136,8 @@ class Mpl2dAnimator:
         # Additional, optional display items
         if self.display_eng_info:
             # Pendulum centroid
-            sim_objects.append(obj.AnimPoint(sprite_generator, self.system.pendulum,
-                                             self.system.pendulum.get_centroid, self.ax))
+            sim_objects.append(obj.AnimPoint(sprite_generator, sys.pendulum,
+                                             sys.pendulum.get_centroid, self.ax))
             # Text boxes for state variables/input and disturbances
             sim_objects.append(obj.AnimText(("x={x:.2f~P}\n"
                                             r"$v_x$={vx:.2f~P}" + "\n"
@@ -145,6 +154,10 @@ class Mpl2dAnimator:
                                              self.ax, x=0.98, y=0.98,
                                              bbox=self.plot_formatter.textbox_format,
                                              transform=self.ax.transAxes, ha="right", va="top"))
+
+        # Set validity time interval for each object to control when they are displayed
+        for sim_obj in sim_objects:
+            sim_obj.times = sys.times
 
         return sim_objects
 

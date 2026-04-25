@@ -55,12 +55,18 @@ class SpriteGenerator:
                 return Circle((0,0), source.radius, **format_spec)
 
 class AnimObject(ABC):
+    def __init__(self, times: tuple[Quantity] | None = None, **kwargs: dict) -> None:
+        self.times = times
+
     @abstractmethod
     def initialize(self) -> plt.Artist:
         pass
     @abstractmethod
-    def update(self, state: State, time: float) -> plt.Artist:
+    def update(self, state: State, time: Quantity) -> plt.Artist:
         pass
+
+    def valid_time(self, time: Quantity) -> bool:
+        return (self.times is None) or (self.times[0] <= time < self.times[1])
 
 class AnimCollection:
     def __init__(self,
@@ -69,6 +75,7 @@ class AnimCollection:
                  ax: plt.Axes,
                  collection: Self | None = None,
                  **kwargs: dict) -> None:
+        super().__init__(**kwargs)
         self.patches = []
         self.source = source
         self.collection = collection
@@ -109,7 +116,9 @@ class AnimRectangle(AnimObject):
                  sprite_gen: SpriteGenerator,
                  source: Block,
                  ax: plt.Axes,
-                 collection: AnimCollection | None = None) -> None:
+                 collection: AnimCollection | None = None,
+                 **kwargs: dict) -> None:
+        super().__init__(**kwargs)
         self.source = source
         self.collection = collection
         prev_format_spec = collection.format_spec if collection else None
@@ -120,7 +129,12 @@ class AnimRectangle(AnimObject):
         self.sprite.set_xy(([],[]))
         return self.sprite
 
-    def update(self, state: State, *args: tuple, **kwargs: dict) -> Rectangle:
+    def update(self, state: State, time: Quantity, *args: tuple, **kwargs: dict) -> Rectangle:
+        if not self.valid_time(time):
+            self.sprite.set_visible(False)
+            return self.sprite
+        self.sprite.set_visible(True)
+
         if self.collection:
             self.collection.update_object(self.source, state)
         else:
@@ -137,7 +151,9 @@ class AnimCircle(AnimObject):
                  sprite_gen: SpriteGenerator,
                  source: Sphere,
                  ax: plt.Axes,
-                 collection: AnimCollection | None = None) -> None:
+                 collection: AnimCollection | None = None,
+                 **kwargs: dict) -> None:
+        super().__init__(**kwargs)
         self.source = source
         self.collection = collection
         prev_format_spec = collection.format_spec if collection else None
@@ -148,7 +164,12 @@ class AnimCircle(AnimObject):
         self.sprite.set_center(([],[]))
         return self.sprite
 
-    def update(self, state: State, *args: tuple, **kwargs: dict) -> Circle:
+    def update(self, state: State, time: Quantity, *args: tuple, **kwargs: dict) -> Circle:
+        if not self.valid_time(time):
+            self.sprite.set_visible(False)
+            return self.sprite
+        self.sprite.set_visible(True)
+
         if self.collection:
             self.collection.update_object(self.source, state)
         else:
@@ -166,6 +187,7 @@ class AnimPoint(AnimObject):
                  ax: plt.Axes,
                  collection: AnimCollection | None = None,
                  **kwargs: dict) -> None:
+        super().__init__(**kwargs)
         self.source = source
         self.update_func = update_func
         self.collection = collection
@@ -183,7 +205,12 @@ class AnimPoint(AnimObject):
         self.sprite.set_center(([],[]))
         return self.sprite
 
-    def update(self, state: State, *args: tuple, **kwargs: dict) -> Circle:
+    def update(self, state: State, time: Quantity, *args: tuple, **kwargs: dict) -> Circle:
+        if not self.valid_time(time):
+            self.sprite.set_visible(False)
+            return self.sprite
+        self.sprite.set_visible(True)
+
         self.source.update_frame(state)
         center = self.update_func()
         self.sprite.set_center((center.x, center.z))
@@ -191,6 +218,7 @@ class AnimPoint(AnimObject):
 
 class AnimText(AnimObject):
     def __init__(self, fmt: str, ax: plt.Axes, x: float, y: float, **kwargs: dict) -> None:
+        super().__init__(**kwargs)
         self.fmt = fmt
         self.text = ax.text(x, y, "", **kwargs)
 
@@ -199,6 +227,12 @@ class AnimText(AnimObject):
         return self.text
 
     def update(self, state: State, time: Quantity, *args: tuple, **kwargs: dict) -> plt.Text:
+        if not self.valid_time(time):
+            self.text.set_visible(False)
+            return self.text
+
+        self.text.set_visible(True)
+
         # Convert state values to display units
         display_state = state.to_display_units()
 

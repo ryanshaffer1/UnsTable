@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Self
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ class System:
     cart: Cart
     pendulum: Pendulum
     gravity: Quantity = 9.81 * ureg.meter / ureg.second**2
+    times: tuple[Quantity, Quantity] | None = None
 
     def __post_init__(self) -> None:
         # Totals
@@ -31,8 +33,20 @@ class System:
         self.moi_pend = self.pendulum.moi[1][1] # Y-axis MOI
         self.m_cart = self.cart.mass
         self.m_pend = self.pendulum.mass
-        self.l_com = self.pendulum.centroid.z
+        self.l_com = np.linalg.norm(self.pendulum.centroid.vector_to(pivot_point))
 
+    def update_state_during_transition(self, other: Self, state: State) -> State:
+        # Update the state theta so that the pendulum "body" is in the same place
+        # from one system to the next (theta passes through the centroid, which is changing)
+        self_theta_offset = self.pendulum.rotation_offsets.get("Y",0*ureg.radian)
+        other_theta_offset = other.pendulum.rotation_offsets.get("Y",0*ureg.radian)
+        state.theta += (self_theta_offset - other_theta_offset)
+        return state
+
+    def valid_time(self, time: Quantity) -> bool:
+        if self.times is None:
+            return True
+        return self.times[0] <= time < self.times[1]
 
     def get_bounding_box(self, history: pd.DataFrame) -> tuple[np.ndarray]:
         # Initialize min/max values for X, Y, and Z limits
@@ -41,7 +55,9 @@ class System:
                                  (np.nan, -np.nan)))*ureg.meter
 
         # Iterate through all states
-        for _, row in history.iterrows():
+        for time, row in history.iterrows():
+            if not self.valid_time(time):
+                continue
             state = State(*row[["x","vx","theta","omega"]].to_numpy())
             # Get bounding boxes for the system components given the current state
             bbox_cart = self.cart.global_bounding_box(state)

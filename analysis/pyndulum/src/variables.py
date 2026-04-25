@@ -107,6 +107,10 @@ class State:
     def get_pandas_dtypes(cls) -> tuple[str]:
         return "pint[m]", "pint[m/s]", "pint[rad]", "pint[rad/s]"
 
+    @classmethod
+    def from_body_theta(cls, x: Quantity, vx: Quantity, body_theta: Quantity, omega: Quantity) -> Self:
+        pass
+
 @dataclass
 class Input:
     u: Quantity
