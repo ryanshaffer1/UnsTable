@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Self
 
 import bpy
+import numpy as np
 import pandas as pd
 from pint import Quantity
 from tqdm import tqdm
@@ -11,6 +12,33 @@ from tqdm import tqdm
 from src import ureg
 from src.system import Block, BodyRefPoint, Cylinder, RigidBody, RigidBodySystem, Sphere, System
 from src.variables import State
+
+
+def color_name_to_rgba(color_name: str) -> tuple[float, float, float, float]:
+    """Convert CSS color name or hex to RGBA tuple."""
+    colors = {
+        "gray": (0.5, 0.5, 0.5, 1.0),
+        "grey": (0.5, 0.5, 0.5, 1.0),
+        "black": (0.0, 0.0, 0.0, 1.0),
+        "white": (1.0, 1.0, 1.0, 1.0),
+        "red": (1.0, 0.0, 0.0, 1.0),
+        "green": (0.0, 1.0, 0.0, 1.0),
+        "blue": (0.0, 0.0, 1.0, 1.0),
+        "cyan": (0.0, 1.0, 1.0, 1.0),
+        "magenta": (1.0, 0.0, 1.0, 1.0),
+        "yellow": (1.0, 1.0, 0.0, 1.0),
+        "saddlebrown": (0.545, 0.271, 0.075, 1.0),
+        "darkgreen": (0.0, 0.392, 0.0, 1.0),
+        "orange": (1.0, 0.647, 0.0, 1.0),
+        "purple": (0.627, 0.125, 0.941, 1.0),
+        "brown": (0.647, 0.165, 0.165, 1.0),
+        "lightgray": (0.827, 0.827, 0.827, 1.0),
+        "lightgrey": (0.827, 0.827, 0.827, 1.0),
+    }
+    color_lower = color_name.lower().strip()
+    if color_lower in colors:
+        return colors[color_lower]
+    return (0.8, 0.8, 0.8, 1.0)
 
 
 class BlenderObjectFormatter:
@@ -50,39 +78,47 @@ class ObjectGenerator:
 
         match source:
             case Block():
-                return self._create_block(source, format_spec)
+                obj = self._create_block(source)
             case Cylinder():
-                return self._create_cylinder(source, format_spec)
+                obj = self._create_cylinder(source)
             case Sphere():
-                return self._create_sphere(source, format_spec)
+                obj = self._create_sphere(source)
+        self._apply_material(obj, format_spec)
+        return obj
 
-    def _create_block(self, source: Block, format_spec: dict) -> bpy.types.Object:
+    def _create_block(self, source: Block) -> bpy.types.Object:
         bpy.ops.mesh.primitive_cube_add(size=1.0)
         obj = bpy.context.active_object
         obj.scale = (source.width.magnitude, source.depth.magnitude, source.height.magnitude)
-        self._apply_material(obj, format_spec)
         return obj
 
-    def _create_cylinder(self, source: Cylinder, format_spec: dict) -> bpy.types.Object:
+    def _create_cylinder(self, source: Cylinder) -> bpy.types.Object:
         bpy.ops.mesh.primitive_cylinder_add(radius=source.radius.magnitude,
                                             depth=source.length.magnitude)
         obj = bpy.context.active_object
-        self._apply_material(obj, format_spec)
         return obj
 
-    def _create_sphere(self, source: Sphere, format_spec: dict) -> bpy.types.Object:
+    def _create_sphere(self, source: Sphere) -> bpy.types.Object:
         bpy.ops.mesh.primitive_uv_sphere_add(radius=source.radius.magnitude)
         obj = bpy.context.active_object
-        self._apply_material(obj, format_spec)
         return obj
 
     def _apply_material(self, obj: bpy.types.Object, format_spec: dict) -> None:
         # Create or get material
-        mat_name = format_spec.get("material", "default_material")
+        mat_name = format_spec.get("material", f"{obj.name}_Material")
         mat = bpy.data.materials.get(mat_name)
         if not mat:
             mat = bpy.data.materials.new(name=mat_name)
-            mat.diffuse_color = format_spec.get("color", (0.8, 0.8, 0.8, 1.0))
+            # Try to get color from various format spec keys
+            color_spec = format_spec.get("color") or format_spec.get("facecolor")
+            if color_spec:
+                color = (color_spec
+                         if isinstance(color_spec, tuple)
+                         else color_name_to_rgba(str(color_spec)))
+            else:
+                color = (0.8, 0.8, 0.8, 1.0)
+            mat.diffuse_color = color
+            mat.use_nodes = False
         if obj.data.materials:
             obj.data.materials[0] = mat
         else:
@@ -113,7 +149,7 @@ class AnimCollection:
         self.source = source
         self.collection = collection
 
-        # Get collection's format spec to apply to all bodies
+        # Get collection"s format spec to apply to all bodies
         self.format_spec = collection.format_spec if collection else {}
         self.format_spec.update(obj_gen.formatter.get_spec(self.source.name))
 
@@ -297,42 +333,6 @@ class AnimPoint(AnimObject):
         # Set keyframes
         self.obj.keyframe_insert(data_path="location", frame=frame)
 
-class AnimText(AnimObject):
-    def __init__(self, fmt: str, x: float, y: float, z: float = 0.0, **kwargs: dict) -> None:
-        super().__init__(**kwargs)
-        self.fmt = fmt
-        bpy.ops.object.text_add()
-        self.text_obj = bpy.context.active_object
-        self.text_obj.location = (x, y, z)
-        self.text_obj.data.align_x = "LEFT"
-        self.text_obj.data.align_y = "BOTTOM"
-
-    def initialize(self) -> bpy.types.Object:
-        self.text_obj.data.body = ""
-        return self.text_obj
-
-    def update(self,
-               state: State,
-               time: Quantity,
-               *args: tuple,
-               **kwargs: dict,
-               ) -> None:
-        if not self.valid_time(time):
-            self.text_obj.hide_viewport = True
-            self.text_obj.hide_render = True
-            return
-
-        self.text_obj.hide_viewport = False
-        self.text_obj.hide_render = False
-
-        # Convert state values to display units
-        display_state = state.to_display_units()
-
-
-        text_vars = {**display_state, "time": time, **kwargs}
-        content = self.fmt.format(**text_vars)
-        self.text_obj.data.body = content
-
 
 @dataclass
 class BlenderSceneFormatter:
@@ -340,8 +340,14 @@ class BlenderSceneFormatter:
     camera_distance: float = 10.0
     camera_location: tuple[float, float, float] = (10, -10, 5)
     light_energy: float = 1000.0
+    limits: tuple[tuple[Quantity, Quantity], tuple[Quantity, Quantity]] | None = None
 
-    def setup_scene(self) -> None:
+    def setup_scene(self, systems: list[System], history: pd.DataFrame) -> None:
+        # Delete default cube if it exists
+        for obj in bpy.data.objects:
+            if obj.type == "MESH" and obj.name == "Cube":
+                bpy.data.objects.remove(obj, do_unlink=True)
+
         # Set scene name
         bpy.context.scene.name = self.scene_title
 
@@ -353,8 +359,9 @@ class BlenderSceneFormatter:
         else:
             camera = bpy.context.scene.camera
 
-        camera.location = self.camera_location
-        camera.rotation_euler = (1.2, 0, 0.8)  # Look at origin roughly
+        # Calculate camera position based on limits if provided
+        self._setup_camera_from_limits(camera, systems, history)
+        bpy.context.scene.camera = camera
 
         # Setup light
         bpy.ops.object.light_add(type="SUN")
@@ -365,6 +372,75 @@ class BlenderSceneFormatter:
         # Set render settings for animation
         bpy.context.scene.render.fps = 30
         bpy.context.scene.frame_start = 0
+        bpy.context.scene.render.resolution_x = 1920
+        bpy.context.scene.render.resolution_y = 1080
+
+    def get_scene_limits(self,
+                         systems: list[System],
+                         history: pd.DataFrame,
+                         ) -> list[list[Quantity]]:
+        # Initialize limits to be updated based on system bounding boxes
+        limits = [[0*ureg.meter,0*ureg.meter], [0*ureg.meter,0*ureg.meter]]
+
+        for sys in systems:
+            # Calculate the plot limits to always keep the system in view
+            bbox_x, _, bbox_z = sys.get_bounding_box(history)
+            xlims = bbox_x
+            ylims = bbox_z
+            # Add margin and make sure the origin is in view
+            margin = 0.5 * ureg.meter
+            xlims = [min(0, xlims[0]) - margin, max(0, xlims[1]) + margin]
+            ylims = [min(0, ylims[0]) - margin, max(0, ylims[1]) + margin]
+            # Update based on previously computed limits
+            limits = [[min(xlims[0], limits[0][0]), max(xlims[1], limits[0][1])]
+                      ,[min(ylims[0], limits[1][0]), max(ylims[1], limits[1][1])]]
+        return limits
+
+
+    def _setup_camera_from_limits(self,
+                                  camera: bpy.types.Object,
+                                  systems: list[System],
+                                  history: pd.DataFrame,
+                                  ) -> None:
+        """Setup camera position and zoom based on system limits."""
+        limits = self.limits or self.get_scene_limits(systems, history)
+        x_limits = limits[0]
+        z_limits = limits[1]
+
+        # Extract magnitude values
+        x_min = x_limits[0].magnitude if hasattr(x_limits[0], "magnitude") else float(x_limits[0])
+        x_max = x_limits[1].magnitude if hasattr(x_limits[1], "magnitude") else float(x_limits[1])
+        z_min = z_limits[0].magnitude if hasattr(z_limits[0], "magnitude") else float(z_limits[0])
+        z_max = z_limits[1].magnitude if hasattr(z_limits[1], "magnitude") else float(z_limits[1])
+
+        # Calculate center and extents
+        center_x = (x_min + x_max) / 2.0
+        center_z = (z_min + z_max) / 2.0
+        extent_x = abs(x_max - x_min) / 2.0
+        extent_z = abs(z_max - z_min) / 2.0
+        max_extent = max(extent_x, extent_z)
+
+        # Position camera to view the scene
+        distance = max_extent * 1.5
+        camera.location = (center_x, -distance, center_z+distance/4)
+
+        # Point camera at center using direction vector
+        camera_pos = np.array(camera.location)
+        target_pos = np.array([center_x, 0, center_z])
+        direction = target_pos - camera_pos
+        norm = np.linalg.norm(direction)
+        if norm > 0:
+            direction = direction / norm
+            dx, dy, dz = direction
+            # Align Blender camera's local -Z axis with the desired direction.
+            rx = np.arccos(np.clip(-dz, -1.0, 1.0))
+            rz = np.arctan2(-dx, dy)
+            camera.rotation_mode = "XYZ"
+            camera.rotation_euler = (rx, 0.0, rz)
+
+        # Set orthographic view with appropriate scale
+        camera.data.type = "ORTHO"
+        camera.data.ortho_scale = max_extent * 2
 
 class Blender3dAnimator:
     def __init__(self,
@@ -391,7 +467,7 @@ class Blender3dAnimator:
         self.history = history_df
 
         # Setup scene
-        self.scene_formatter.setup_scene()
+        self.scene_formatter.setup_scene(systems, history_df)
 
         # Create animation objects
         self.objects = []
@@ -430,25 +506,13 @@ class Blender3dAnimator:
         # Cart and pendulum
         sim_objects.append(AnimBlock(obj_generator, sys.cart))
         sim_objects += AnimCollection(obj_generator, sys.pendulum).objects
-        # Text box for time
-        sim_objects.append(AnimText("Time: {time:.2f~P}", x=-5, y=5, z=2))
+        # (text display removed)
         # Additional, optional display items
         if self.display_eng_info:
             # Pendulum centroid
             sim_objects.append(AnimPoint(obj_generator, sys.pendulum,
                                              sys.pendulum.get_centroid))
-            # Text boxes for state variables/input and disturbances
-            sim_objects.append(AnimText(("x={x:.2f~P}\n"
-                                            "v_x={vx:.2f~P}" + "\n"
-                                            "theta={theta:.2f~P}" + "\n"
-                                            "omega={omega:.2f~P}" + "\n"
-                                            "u={u:.2f~P}"),
-                                            x=-5, y=4, z=2))
-            sim_objects.append(AnimText(("w_x={w_x:.2f~P}" + "\n"
-                                             "w_vx={w_vx:.2f~P}" + "\n"
-                                             "w_theta={w_theta:.2f~P}" + "\n"
-                                             "w_omega={w_omega:.2f~P}"),
-                                             x=-5, y=3, z=2))
+            # (text display removed)
 
         # Set validity time interval for each object to control when they are displayed
         for sim_obj in sim_objects:

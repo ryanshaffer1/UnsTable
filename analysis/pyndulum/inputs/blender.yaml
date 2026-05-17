@@ -48,7 +48,6 @@ times: !unit [!range [0, 10, 0.02], second]
 
 animation: !Blender3dAnimator
   scene_formatter: !BlenderSceneFormatter {}
-    # limits: [[!unit -0.5 meter, !unit 1.5 meter], [!unit -0.5 meter, !unit 1.5 meter]]
   obj_formatter: !BlenderObjectFormatter
     cart:
       facecolor: gray

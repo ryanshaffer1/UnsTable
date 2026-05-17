@@ -270,9 +270,9 @@ class MplPlotFormatter:
         # Set axis limits and units
         ax.xaxis.set_units(self.axis_units)
         ax.yaxis.set_units(self.axis_units)
-        self.set_plot_limits(systems, history)
-        ax.set_xlim(self.limits[0])
-        ax.set_ylim(self.limits[1])
+        limits = self.limits or self.get_scene_limits(systems, history)
+        ax.set_xlim(limits[0])
+        ax.set_ylim(limits[1])
 
         # Set plot area characteristics
         if self.axis_equal:
@@ -280,11 +280,10 @@ class MplPlotFormatter:
         if self.grid:
             ax.grid()
 
-    def set_plot_limits(self, systems: list[System], history: pd.DataFrame) -> None:
-        # Check if limits have already been set
-        if self.limits is not None:
-            return
-
+    def get_scene_limits(self,
+                         systems: list[System],
+                         history: pd.DataFrame,
+                         ) -> list[list[Quantity]]:
         # Initialize limits to be updated based on system bounding boxes
         limits = [[0,0], [0,0]]
 
@@ -300,8 +299,7 @@ class MplPlotFormatter:
             # Update based on previously computed limits
             limits = [[min(xlims[0], limits[0][0]), max(xlims[1], limits[0][1])]
                       ,[min(ylims[0], limits[1][0]), max(ylims[1], limits[1][1])]]
-
-        self.limits = limits
+        return limits
 
 class Mpl2dAnimator:
     def __init__(self,
