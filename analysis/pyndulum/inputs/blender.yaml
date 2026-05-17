@@ -1,0 +1,70 @@
+systems: 
+  - &sys !System
+    times:
+      - !unit 0 second
+      - !unit 10 second
+    actuator: !Actuator
+      force_limit: !unit 50 newton
+      refresh_rate: !unit 10 hertz
+      command_lag: !unit 2 millisecond
+    cart: !Cart {}
+    pendulum: !Pendulum
+      rod: &rod !Rod {}
+      bob: !RigidBodySystem
+        bodies:
+          - !Cylinder &tabletop
+            mass: !unit 2 kg
+            length: !unit 1 inch
+            radius: !unit 16 inch
+            origin_type: bottom_center
+            origin_mount: [*rod, top_center]
+          - !Block &load
+            name: cup
+            mass: !unit 0.5 kg
+            width: !unit 2 inch
+            depth: !unit 2 inch
+            height: !unit 5 inch
+            origin_type: maxx_ceny_minz
+            origin_mount: [*tabletop, maxx_ceny_maxz]
+        origin_type: bottom_center
+
+controller: !LQRController
+  Q:  !array [[10,0,0,0],[0,1,0,0],[0,0,100,0],[0,0,0,10]]
+  R: 0.1
+  system: *sys
+  setpoint: [0,0,0,0]
+
+initial_state: !State
+  x: !unit 0 meter
+  vx: !unit 0 meter/second
+  theta: !unit 20 degree
+  omega: !unit 0 degree/second
+
+disturbances: !GaussianDisturbance
+  mean: !array [0, 0, 0, 0]
+  std_dev: !array [0, 0.0, 0, 0.0]
+
+times: !unit [!range [0, 10, 0.02], second]
+
+animation: !Blender3dAnimator
+  scene_formatter: !BlenderSceneFormatter {}
+    # limits: [[!unit -0.5 meter, !unit 1.5 meter], [!unit -0.5 meter, !unit 1.5 meter]]
+  obj_formatter: !BlenderObjectFormatter
+    cart:
+      facecolor: gray
+    pendulum:
+      facecolor: saddlebrown
+    cup:
+      facecolor: cyan
+      lw: 0.5
+      edgecolor: black
+    point:
+      color: black
+  display_eng_info: true
+  refresh_rate: !unit 30 hertz
+
+settings:
+  random_seed: 42
+  show_progress: True
+  save_animation: True
+  show_animation: False

@@ -111,7 +111,7 @@ class Simulation:
     def get_valid_system(self, time: Quantity) -> System:
         valid_systems = [sys for sys in self.systems if sys.valid_time(time)]
         if not valid_systems or len(valid_systems) > 1:
-            msg = f"Time {time} has {len(valid_systems)} valid systems. Check system time intervals."
+            msg = f"Time {time} has {len(valid_systems)} valid systems. Check input time intervals."
             logger.warning(msg)
             raise ValueError(msg)
         return valid_systems[0]
@@ -172,7 +172,7 @@ def main(parameter_file: Path) -> None:
 
         if settings.get("save_animation", False):
             logger.info("Saving animation...")
-            animator.save("pyndulum.gif")
+            animator.save()
 
         if settings.get("show_animation", True):
             logger.info("Showing animation...")

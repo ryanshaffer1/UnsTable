@@ -25,6 +25,10 @@ constructable_classes = {
     "Mpl2dAnimator": animation.Mpl2dAnimator,
     "MplPlotFormatter": animation.MplPlotFormatter,
     "MplSpriteFormatter": animation.MplSpriteFormatter,
+    "Blender3dAnimator": animation.Blender3dAnimator,
+    "BlenderSceneFormatter": animation.BlenderSceneFormatter,
+    "BlenderObjectFormatter": animation.BlenderObjectFormatter,
+
 
     # Add other classes as needed
 }
